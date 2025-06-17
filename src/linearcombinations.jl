@@ -5,8 +5,7 @@ function bases_compatible(b1, b2)
     
     return b1.nmodes == b2.nmodes && typeof(b1) == typeof(b2)
 end
-Base.:(==)(b1::QuadPairBasis, b2::QuadPairBasis) = b1.nmodes == b2.nmodes
-Base.:(==)(b1::QuadBlockBasis, b2::QuadBlockBasis) = b1.nmodes == b2.nmodes
+
 
 """
     GaussianLinearCombination{B<:SymplecticBasis,C,S}
