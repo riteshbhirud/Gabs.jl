@@ -13,7 +13,7 @@ using SymplecticFactorizations: williamson, Williamson, polar, Polar, blochmessi
 
 export
     # types
-    GaussianState, GaussianUnitary, GaussianChannel,
+    GaussianState, GaussianUnitary, GaussianChannel,GaussianLinearCombination,
     # Gaussian measurements
     generaldyne, Generaldyne,
     # symplectic representations
@@ -35,6 +35,9 @@ export
     williamson, Williamson, polar, Polar, blochmessiah, BlochMessiah,
     # metrics
     purity, entropy_vn, fidelity, logarithmic_negativity
+    
+    # quck Note: Removed simplify! and normalize! from exports since they conflict with LinearAlgebra
+    # These will be available as Gabs.simplify! and Gabs.normalize!
 
 include("errors.jl")
 
@@ -61,5 +64,7 @@ include("generaldyne.jl")
 include("wigner.jl")
 
 include("metrics.jl")
+
+include("linearcombinations.jl")
 
 end
