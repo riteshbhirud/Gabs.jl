@@ -1,7 +1,7 @@
 module Gabs
 
 import LinearAlgebra
-using LinearAlgebra: I, det, mul!, diag, qr, eigvals, Diagonal, cholesky, Symmetric
+using LinearAlgebra: I, det, mul!, diag, qr, eigvals, Diagonal, cholesky, Symmetric, dot
 
 import QuantumInterface: StateVector, AbstractOperator, apply!, tensor, ⊗, directsum, ⊕, entropy_vn, fidelity, logarithmic_negativity
 
@@ -22,6 +22,9 @@ export
     tensor, ⊗, directsum, ⊕, apply!, ptrace,
     # predefined Gaussian states
     vacuumstate, thermalstate, coherentstate, squeezedstate, eprstate,
+    # non-Gaussian states
+    catstate_even, catstate_odd, catstate, gkpstate,
+    normalization_factor, fidelity_approximation,
     # predefined Gaussian channels
     displace, squeeze, twosqueeze, phaseshift, beamsplitter,
     attenuator, amplifier,
@@ -66,5 +69,7 @@ include("wigner.jl")
 include("metrics.jl")
 
 include("linearcombinations.jl")
+
+include("nongaussian_states.jl")
 
 end
