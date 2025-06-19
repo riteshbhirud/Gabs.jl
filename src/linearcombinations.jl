@@ -42,14 +42,18 @@ mutable struct GaussianLinearCombination{B<:SymplecticBasis,C,S}
     ħ::Number
     
     function GaussianLinearCombination(basis::B, coeffs::Vector{C}, states::Vector{S}) where {B<:SymplecticBasis,C,S}
-        length(coeffs) == length(states) || throw(DimensionMismatch("Number of coefficients must match number of states"))
+        length(coeffs) == length(states) || throw(DimensionMismatch("Number of coefficients ($(length(coeffs))) must match number of states ($(length(states)))"))
         isempty(states) && throw(ArgumentError("Cannot create an empty linear combination"))
         
         ħ = first(states).ħ
-        for state in states
-            state isa GaussianState || throw(ArgumentError("All states must be GaussianState objects"))
-            bases_compatible(state.basis, basis) || throw(ArgumentError(SYMPLECTIC_ERROR))
-            state.ħ == ħ || throw(ArgumentError(HBAR_ERROR))
+        for (i, state) in enumerate(states)
+            state isa GaussianState || throw(ArgumentError("Element $i is not a GaussianState: got $(typeof(state))"))
+            if !bases_compatible(state.basis, basis)
+                throw(ArgumentError("State $i has incompatible basis: expected $(typeof(basis))($(basis.nmodes)), got $(typeof(state.basis))($(state.basis.nmodes))"))
+            end
+            if state.ħ != ħ
+                throw(ArgumentError("State $i has different ħ: expected $ħ, got $(state.ħ)"))
+            end
         end
         
         return new{B,C,S}(basis, coeffs, states, ħ)
@@ -246,9 +250,11 @@ function simplify!(lc::GaussianLinearCombination; atol::Real=1e-14)
     
     unique_states = typeof(states[1])[]
     combined_coeffs = eltype(coeffs)[]
+    sizehint!(unique_states, length(states))
+    sizehint!(combined_coeffs, length(states))
     
     for (coeff, state) in zip(coeffs, states)
-        existing_idx = findfirst(s -> isequal(s, state), unique_states)
+        existing_idx = findfirst(s -> isapprox(s, state, atol=1e-12), unique_states)
         
         if existing_idx === nothing
             push!(unique_states, state)

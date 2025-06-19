@@ -183,31 +183,40 @@ end
 Internal function to create square lattice GKP state.
 """
 function _gkpstate_square(basis::SymplecticBasis, delta, nmax, ħ)
-    lattice_spacing = sqrt(2 * π * ħ)
+    if delta <= 0
+        throw(ArgumentError("delta must be positive, got $delta"))
+    end
+    if delta < 1e-6
+        @warn "Very small delta=$delta may cause numerical instability"
+    end
+    if nmax <= 0
+        throw(ArgumentError("nmax must be positive, got $nmax"))
+    end
+    if nmax > 50
+        @warn "Large nmax=$nmax will create $(2*nmax+1) states, consider smaller value for performance"
+    end
     
+    lattice_spacing = sqrt(2 * π * ħ)
     lattice_points = [k * lattice_spacing for k in -nmax:nmax]
     
-    states = GaussianState[]
-    coeffs = Float64[]
+    n_points = length(lattice_points)
+    states = Vector{GaussianState}(undef, n_points)
+    coeffs = ones(Float64, n_points)
     
-    for x_pos in lattice_points
-
+    for (i, x_pos) in enumerate(lattice_points)
         squeeze_op = squeeze(basis, delta, π/2, ħ=ħ)
-        
         displace_op = displace(basis, x_pos, ħ=ħ)
-        
         vac = vacuumstate(basis, ħ=ħ)
         
         squeezed_state = squeeze_op * vac
         final_state = displace_op * squeezed_state
         
-        push!(states, final_state)
-        push!(coeffs, 1.0)  
+        states[i] = final_state
     end
     
     lc = GaussianLinearCombination(basis, coeffs, states)
-norm_factor = normalization_factor(lc.states, lc.coefficients)
-lc.coefficients .= lc.coefficients .* norm_factor
+    norm_factor = normalization_factor(lc.states, lc.coefficients)
+    lc.coefficients .= lc.coefficients .* norm_factor
     
     return lc
 end
@@ -286,6 +295,11 @@ function normalization_factor(states::Vector{<:GaussianState}, coeffs::Vector{<:
             overlap = _gaussian_overlap(states[i], states[j])
             norm_squared += real(conj(coeffs[i]) * coeffs[j] * overlap)
         end
+    end
+    
+    if norm_squared <= 1e-15
+        @warn "Near-zero or negative normalization detected (norm²=$norm_squared). Check for cancellation in coefficients."
+        return 1.0
     end
     
     return 1.0 / sqrt(norm_squared)
@@ -464,16 +478,18 @@ function _tensor_linear_combinations(lc1::GaussianLinearCombination, lc2::Gaussi
     @assert lc1.ħ == lc2.ħ "Linear combinations must have the same ħ"
     
     new_basis = lc1.basis ⊕ lc2.basis
-    new_coeffs = eltype(promote_type(eltype(lc1.coefficients), eltype(lc2.coefficients)))[]
-    new_states = GaussianState[]
     
+    result_size = length(lc1) * length(lc2)
+    CoeffType = promote_type(eltype(lc1.coefficients), eltype(lc2.coefficients))
+    new_coeffs = Vector{CoeffType}(undef, result_size)
+    new_states = Vector{GaussianState}(undef, result_size)
+    
+    idx = 1
     for (c1, s1) in lc1
         for (c2, s2) in lc2
-            new_coeff = c1 * c2
-            new_state = s1 ⊗ s2
-            
-            push!(new_coeffs, new_coeff)
-            push!(new_states, new_state)
+            new_coeffs[idx] = c1 * c2
+            new_states[idx] = s1 ⊗ s2
+            idx += 1
         end
     end
     
