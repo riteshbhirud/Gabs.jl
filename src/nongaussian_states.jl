@@ -324,12 +324,16 @@ function _gaussian_overlap(state1::GaussianState, state2::GaussianState)
     V1, V2 = state1.covar, state2.covar
     
     Δμ = μ1 - μ2
-    
     V_sum = V1 + V2
     
-    exp_factor = exp(-0.5 * dot(Δμ, V_sum \ Δμ))
+    # Exponential factor
+    exp_factor = exp(-0.25 * dot(Δμ, V_sum \ Δμ))
     
-    det_factor = sqrt(det(V1) * det(V2)) / sqrt(det(V_sum))
+    # Determinant factor with correct normalization
+    # For Gaussian states, the overlap formula is:
+    # ⟨ψ₁|ψ₂⟩ = (2^N (det(V₁)det(V₂))^(1/4)) / (det(V₁+V₂))^(1/2) * exp(...)
+    nmodes = state1.basis.nmodes
+    det_factor = (2.0^nmodes * (det(V1) * det(V2))^0.25) / sqrt(det(V_sum))
     
     return exp_factor * det_factor
 end

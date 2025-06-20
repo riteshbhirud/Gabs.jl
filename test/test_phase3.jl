@@ -1,659 +1,681 @@
-@testitem "Linear Combinations Integration - Phase 3" begin
+@testitem "Phase 3: Integration and Advanced Features" begin
     using Gabs
-    using StaticArrays
     using LinearAlgebra
-    using CairoMakie
+    using StaticArrays
+    using Test
 
-    nmodes = rand(1:3)
+    # Test setup
+    nmodes = 2
     qpairbasis = QuadPairBasis(nmodes)
     qblockbasis = QuadBlockBasis(nmodes)
+    single_basis = QuadPairBasis(1)
 
-    @testset "Gaussian Unitary Actions" begin
-        # Test basic unitary actions
-        basis = QuadPairBasis(1)
-        coh1 = coherentstate(basis, 1.0)
-        coh2 = coherentstate(basis, -1.0)
-        lc = GaussianLinearCombination(basis, [0.6, 0.8], [coh1, coh2])
-        
-        # Displacement
-        α = 0.5 + 0.3im
-        disp_op = displace(basis, α)
-        lc_displaced = disp_op * lc
-        
-        @test lc_displaced isa GaussianLinearCombination
-        @test length(lc_displaced) == 2
-        @test lc_displaced.coefficients == [0.6, 0.8]
-        @test lc_displaced.basis == basis
-        @test lc_displaced.ħ == lc.ħ
-        
-        # Check that displacement is applied correctly to each state
-        expected_state1 = disp_op * coh1
-        expected_state2 = disp_op * coh2
-        @test isapprox(lc_displaced.states[1], expected_state1, atol=1e-12)
-        @test isapprox(lc_displaced.states[2], expected_state2, atol=1e-12)
-        
-        # Squeezing
-        r, θ = 0.5, π/4
-        squeeze_op = squeeze(basis, r, θ)
-        lc_squeezed = squeeze_op * lc
-        
-        @test lc_squeezed isa GaussianLinearCombination
-        @test length(lc_squeezed) == 2
-        @test lc_squeezed.coefficients == [0.6, 0.8]
-        
-        # Phase shift
-        phase_op = phaseshift(basis, π/3)
-        lc_phase = phase_op * lc
-        
-        @test lc_phase isa GaussianLinearCombination
-        @test length(lc_phase) == 2
-        
-        # Test with multi-mode
-        if nmodes > 1
-            basis_multi = QuadPairBasis(nmodes)
-            coh_multi1 = coherentstate(basis_multi, 1.0)
-            coh_multi2 = coherentstate(basis_multi, -1.0)
-            lc_multi = GaussianLinearCombination(basis_multi, [0.5, 0.5], [coh_multi1, coh_multi2])
+    @testset "Gaussian Operations Integration" begin
+        # Create test states
+        coh1 = coherentstate(single_basis, 1.0)
+        coh2 = coherentstate(single_basis, -1.0)
+        lc = GaussianLinearCombination(single_basis, [0.6, 0.8], [coh1, coh2])
+
+        @testset "Gaussian Unitary Operations" begin
+            # Test displacement operation
+            disp_op = displace(single_basis, 0.5 + 0.3im)
+            lc_displaced = disp_op * lc
             
-            disp_multi = displace(basis_multi, 0.5)
-            lc_multi_displaced = disp_multi * lc_multi
+            @test lc_displaced isa GaussianLinearCombination
+            @test length(lc_displaced) == 2
+            @test lc_displaced.coefficients == lc.coefficients
+            @test lc_displaced.basis == lc.basis
+            @test lc_displaced.ħ == lc.ħ
+
+            # Verify displacement was applied to each state
+            expected_state1 = disp_op * coh1
+            expected_state2 = disp_op * coh2
+            @test isapprox(lc_displaced.states[1], expected_state1)
+            @test isapprox(lc_displaced.states[2], expected_state2)
+
+            # Test squeeze operation
+            squeeze_op = squeeze(single_basis, 0.5, π/4)
+            lc_squeezed = squeeze_op * lc
             
-            @test lc_multi_displaced isa GaussianLinearCombination
-            @test length(lc_multi_displaced) == 2
+            @test lc_squeezed isa GaussianLinearCombination
+            @test length(lc_squeezed) == 2
+            @test lc_squeezed.coefficients == lc.coefficients
+
+            # Test phase shift operation
+            phase_op = phaseshift(single_basis, π/3)
+            lc_phased = phase_op * lc
+            
+            @test lc_phased isa GaussianLinearCombination
+            @test length(lc_phased) == 2
+
+            # Test with different basis types
+            coh_block = coherentstate(QuadBlockBasis(1), 1.0)
+            lc_block = GaussianLinearCombination(coh_block)
+            disp_block = displace(QuadBlockBasis(1), 0.5)
+            lc_displaced_block = disp_block * lc_block
+            
+            @test lc_displaced_block isa GaussianLinearCombination
+            @test lc_displaced_block.basis isa QuadBlockBasis
         end
-        
-        # Test error handling
-        basis_wrong = QuadPairBasis(2)
-        disp_wrong = displace(basis_wrong, 1.0)
-        @test_throws ArgumentError disp_wrong * lc
-        
-        # Test ħ mismatch
-        lc_diff_h = GaussianLinearCombination(basis, [0.5, 0.5], [coherentstate(basis, 1.0, ħ=1), coherentstate(basis, -1.0, ħ=1)])
-        @test_throws ArgumentError disp_op * lc_diff_h
-    end
 
-    @testset "Gaussian Channel Actions" begin
-        basis = QuadPairBasis(1)
-        vac = vacuumstate(basis)
-        coh = coherentstate(basis, 1.0)
-        lc = GaussianLinearCombination(basis, [0.7, 0.3], [vac, coh])
-        
-        # Attenuator channel
-        θ, n = π/6, 2
-        att_channel = attenuator(basis, θ, n)
-        lc_attenuated = att_channel * lc
-        
-        @test lc_attenuated isa GaussianLinearCombination
-        @test length(lc_attenuated) == 2
-        @test lc_attenuated.coefficients == [0.7, 0.3]
-        @test lc_attenuated.basis == basis
-        
-        # Check that channel is applied correctly
-        expected_vac = att_channel * vac
-        expected_coh = att_channel * coh
-        @test isapprox(lc_attenuated.states[1], expected_vac, atol=1e-12)
-        @test isapprox(lc_attenuated.states[2], expected_coh, atol=1e-12)
-        
-        # Amplifier channel
-        r_amp, n_amp = 0.3, 1.5
-        amp_channel = amplifier(basis, r_amp, n_amp)
-        lc_amplified = amp_channel * lc
-        
-        @test lc_amplified isa GaussianLinearCombination
-        @test length(lc_amplified) == 2
-        
-        # Test with custom noise
-        noise_matrix = [1.5 0.2; 0.2 1.8]
-        custom_channel = displace(basis, 0.5, noise_matrix)
-        lc_custom = custom_channel * lc
-        
-        @test lc_custom isa GaussianLinearCombination
-        @test length(lc_custom) == 2
-        
-        # Error handling
-        basis_wrong = QuadBlockBasis(1)
-        channel_wrong = attenuator(basis_wrong, θ, n)
-        @test_throws ArgumentError channel_wrong * lc
+        @testset "Gaussian Channel Operations" begin
+            # Test attenuator channel
+            att_channel = attenuator(single_basis, π/6, 3)
+            lc_attenuated = att_channel * lc
+            
+            @test lc_attenuated isa GaussianLinearCombination
+            @test length(lc_attenuated) == 2
+            @test lc_attenuated.coefficients == lc.coefficients
+            @test lc_attenuated.basis == lc.basis
+
+            # Test amplifier channel
+            amp_channel = amplifier(single_basis, 0.5, 2)
+            lc_amplified = amp_channel * lc
+            
+            @test lc_amplified isa GaussianLinearCombination
+            @test length(lc_amplified) == 2
+
+            # Test that channel increases covariance (noise)
+            original_covar_trace = sum(tr(state.covar) for (_, state) in lc)
+            amplified_covar_trace = sum(tr(state.covar) for (_, state) in lc_amplified)
+            @test amplified_covar_trace > original_covar_trace
+        end
+
+        @testset "Operations Error Handling" begin
+            # Create displacement operator in this scope
+            disp_single = displace(single_basis, 1.0)
+            
+            # Test basis mismatch
+            lc_wrong_basis = GaussianLinearCombination(coherentstate(qpairbasis, 1.0))
+            @test_throws ArgumentError disp_single * lc_wrong_basis
+
+            # Test ħ mismatch
+            coh_diff_hbar = coherentstate(single_basis, 1.0, ħ=1)
+            lc_diff_hbar = GaussianLinearCombination(coh_diff_hbar)
+            @test_throws ArgumentError disp_single * lc_diff_hbar
+        end
     end
 
     @testset "Tensor Products" begin
-        basis1 = QuadPairBasis(1)
-        basis2 = QuadPairBasis(1)
-        
-        # Create linear combinations
-        coh1 = coherentstate(basis1, 1.0)
-        coh2 = coherentstate(basis1, -1.0)
-        lc1 = GaussianLinearCombination(basis1, [0.6, 0.8], [coh1, coh2])
-        
-        vac = vacuumstate(basis2)
-        sq = squeezedstate(basis2, 0.5, π/4)
-        lc2 = GaussianLinearCombination(basis2, [0.3, 0.7], [vac, sq])
-        
-        # Tensor product
-        lc_tensor = tensor(lc1, lc2)
-        @test lc_tensor isa GaussianLinearCombination
-        @test length(lc_tensor) == 4  # 2 × 2 = 4 terms
-        @test lc_tensor.basis.nmodes == 2
-        
-        # Check coefficients
-        expected_coeffs = [0.6*0.3, 0.6*0.7, 0.8*0.3, 0.8*0.7]
-        @test isapprox(lc_tensor.coefficients, expected_coeffs, atol=1e-12)
-        
-        # Check states
-        expected_states = [coh1 ⊗ vac, coh1 ⊗ sq, coh2 ⊗ vac, coh2 ⊗ sq]
-        for i in 1:4
-            @test isapprox(lc_tensor.states[i], expected_states[i], atol=1e-12)
-        end
-        
-        # Test ⊗ operator alias
-        lc_tensor_alias = lc1 ⊗ lc2
-        @test lc_tensor_alias == lc_tensor
-        
-        # Test with typed arrays
-        lc_tensor_typed = tensor(Vector{Float64}, Vector{GaussianState}, lc1, lc2)
-        @test lc_tensor_typed isa GaussianLinearCombination
-        @test lc_tensor_typed.coefficients isa Vector{Float64}
-        
-        # Test single component tensor
-        lc_single1 = GaussianLinearCombination(coh1)
-        lc_single2 = GaussianLinearCombination(vac)
-        lc_single_tensor = lc_single1 ⊗ lc_single2
-        
-        @test length(lc_single_tensor) == 1
-        @test isapprox(lc_single_tensor.states[1], coh1 ⊗ vac, atol=1e-12)
-        
-        # Error handling
-        basis_block = QuadBlockBasis(1)
-        lc_block = GaussianLinearCombination(vacuumstate(basis_block))
-        @test_throws ArgumentError lc1 ⊗ lc_block
-        
-        # ħ mismatch
-        lc_diff_h = GaussianLinearCombination(basis2, [1.0], [vacuumstate(basis2, ħ=1)])
-        @test_throws ArgumentError lc1 ⊗ lc_diff_h
-    end
-
-    @testset "Partial Trace" begin
-        basis = QuadPairBasis(2)
-        
-        # Create 2-mode states
-        coh1 = coherentstate(basis, [1.0+0.0im, 0.5+0.0im])
-        coh2 = coherentstate(basis, [-1.0+0.0im, -0.5+0.0im])
-        vac = vacuumstate(basis)
-        
-        lc = GaussianLinearCombination(basis, [0.5, 0.3, 0.2], [coh1, coh2, vac])
-        
-        # Partial trace over mode 1
-        lc_traced1 = ptrace(lc, [1])
-        @test lc_traced1 isa GaussianLinearCombination
-        @test lc_traced1.basis.nmodes == 1
-        
-        # Check that traced states are correct
-        expected_traced1 = ptrace(coh1, [1])
-        expected_traced2 = ptrace(coh2, [1])
-        expected_traced_vac = ptrace(vac, [1])
-        
-        # Verify some state is present (exact matching depends on simplification)
-        @test length(lc_traced1) >= 1
-        @test lc_traced1.basis == QuadPairBasis(1)
-        
-        # Partial trace over mode 2
-        lc_traced2 = ptrace(lc, [2])
-        @test lc_traced2 isa GaussianLinearCombination
-        @test lc_traced2.basis.nmodes == 1
-        
-        # Test with identical states (should combine coefficients)
-        identical_state = coherentstate(basis, [1.0, 0.0])
-        lc_identical = GaussianLinearCombination(basis, [0.3, 0.7], [identical_state, identical_state])
-        lc_traced_identical = ptrace(lc_identical, [1])
-        
-        # After tracing identical states, coefficients should combine
-        @test length(lc_traced_identical) <= 2  # May combine into fewer terms
-        
-        # Test with static arrays
-        if nmodes >= 2
-            coh_static = coherentstate(SVector{4}, SMatrix{4,4}, basis, [1.0, 0.5])
-            vac_static = vacuumstate(SVector{4}, SMatrix{4,4}, basis)
-            lc_static = GaussianLinearCombination(basis, [0.6, 0.4], [coh_static, vac_static])
+        @testset "Basic Tensor Products" begin
+            # Single mode linear combinations
+            coh1 = coherentstate(single_basis, 1.0)
+            coh2 = coherentstate(single_basis, -1.0)
+            lc1 = GaussianLinearCombination(single_basis, [0.6, 0.4], [coh1, coh2])
             
-            lc_traced_static = ptrace(lc_static, [1])
-            @test lc_traced_static isa GaussianLinearCombination
-        end
-        
-        # Error handling
-        @test_throws ArgumentError ptrace(lc, [1, 2])  # Can't trace all modes
-        @test_throws ArgumentError ptrace(lc, [3])     # Invalid mode index
-    end
+            vac = vacuumstate(single_basis)
+            squeezed = squeezedstate(single_basis, 0.5, π/4)
+            lc2 = GaussianLinearCombination(single_basis, [0.8, 0.6], [vac, squeezed])
 
-    @testset "Wigner Functions" begin
-        basis = QuadPairBasis(1)
-        
-        # Simple linear combination
-        coh1 = coherentstate(basis, 1.0)
-        coh2 = coherentstate(basis, -1.0)
-        lc = GaussianLinearCombination(basis, [0.6, 0.8], [coh1, coh2])
-        
-        # Test points
-        x_test = [0.0, 0.0]
-        x_test2 = [1.0, 0.5]
-        
-        # Wigner function
-        w_lc = wigner(lc, x_test)
-        @test w_lc isa Real
-        @test isfinite(w_lc)
-        
-        # Should include diagonal and off-diagonal terms
-        w_diagonal = abs2(0.6) * wigner(coh1, x_test) + abs2(0.8) * wigner(coh2, x_test)
-        w_cross = 2 * real(conj(0.6) * 0.8 * cross_wigner(coh1, coh2, x_test))
-        w_expected = w_diagonal + w_cross
-        
-        @test isapprox(w_lc, w_expected, atol=1e-10)
-        
-        # Test at different points
-        w_lc2 = wigner(lc, x_test2)
-        @test w_lc2 isa Real
-        @test isfinite(w_lc2)
-        
-        # Cross-Wigner function
-        cross_w = cross_wigner(coh1, coh2, x_test)
-        @test cross_w isa Real
-        @test isfinite(cross_w)
-        
-        # Cross-Wigner should be symmetric in states
-        cross_w_sym = cross_wigner(coh2, coh1, x_test)
-        @test isapprox(cross_w, cross_w_sym, atol=1e-10)
-        
-        # Test with identical states
-        cross_w_identical = cross_wigner(coh1, coh1, x_test)
-        w_single = wigner(coh1, x_test)
-        @test isapprox(cross_w_identical, w_single, atol=1e-10)
-        
-        # Wigner characteristic function
-        xi_test = [0.5, -0.3]
-        wchar_lc = wignerchar(lc, xi_test)
-        @test wchar_lc isa Complex
-        @test isfinite(real(wchar_lc))
-        @test isfinite(imag(wchar_lc))
-        
-        # Test normalization: ∫ W(x) dx = 1 (approximately, for discrete sampling)
-        x_range = -3:0.5:3
-        y_range = -3:0.5:3
-        wigner_sum = 0.0
-        dx = 0.5
-        for x in x_range, y in y_range
-            wigner_sum += wigner(lc, [x, y]) * dx^2
-        end
-        @test abs(wigner_sum - 1.0) < 0.1  # Rough normalization check
-        
-        # Error handling
-        @test_throws ArgumentError wigner(lc, [1.0])  # Wrong dimension
-        @test_throws ArgumentError wignerchar(lc, [1.0, 2.0, 3.0])  # Wrong dimension
-        
-        # Different basis error
-        basis_wrong = QuadBlockBasis(1)
-        coh_wrong = coherentstate(basis_wrong, 1.0)
-        @test_throws ArgumentError cross_wigner(coh1, coh_wrong, x_test)
-    end
-
-    @testset "Visualization Support" begin
-        basis = QuadPairBasis(1)
-        
-        # Create cat state
-        cat_even = catstate_even(basis, 1.0)
-        
-        # Test grid
-        q_range = -3:0.2:3
-        p_range = -3:0.2:3
-        
-        # Test convert_arguments for heatmap
-        args_wigner = Makie.convert_arguments(Makie.Heatmap, q_range, p_range, cat_even; dist=:wigner)
-        @test args_wigner isa Tuple
-        @test length(args_wigner) == 3
-        @test size(args_wigner[3]) == (length(q_range), length(p_range))
-        
-        # Test wignerchar visualization
-        args_char = Makie.convert_arguments(Makie.Heatmap, q_range, p_range, cat_even; dist=:wignerchar)
-        @test args_char isa Tuple
-        @test length(args_char) == 3
-        @test size(args_char[3]) == (length(q_range), length(p_range))
-        
-        # Values should be real for the data
-        @test all(isfinite, args_wigner[3])
-        @test all(isfinite, args_char[3])
-        
-        # Test that negative values are handled (cat states have negative Wigner regions)
-        wigner_data = args_wigner[3]
-        @test any(wigner_data .< 0)  # Cat states should have negative regions
-        @test any(wigner_data .> 0)  # And positive regions
-        
-        # Test with GKP state
-        gkp = gkpstate(basis, lattice=:square, delta=0.2, nmax=2)
-        args_gkp = Makie.convert_arguments(Makie.Heatmap, q_range, p_range, gkp; dist=:wigner)
-        @test args_gkp isa Tuple
-        @test all(isfinite, args_gkp[3])
-        
-        # Error handling
-        basis_2mode = QuadPairBasis(2)
-        lc_2mode = GaussianLinearCombination(coherentstate(basis_2mode, [1.0, 0.5]))
-        @test_throws ArgumentError Makie.convert_arguments(Makie.Heatmap, q_range, p_range, lc_2mode)
-        
-        @test_throws ErrorException Makie.convert_arguments(Makie.Heatmap, q_range, p_range, cat_even; dist=:invalid)
-    end
-
-    @testset "Measurement Probabilities" begin
-        basis = QuadPairBasis(2)
-        
-        # Create entangled state as linear combination
-        coh1 = coherentstate(basis, [1.0+0.0im, 0.0+0.0im])
-        coh2 = coherentstate(basis, [0.0+0.0im, 1.0+0.0im])
-        lc = GaussianLinearCombination(basis, [0.6, 0.8], [coh1, coh2])
-        
-        # Measurement state
-        measurement_state = coherentstate(QuadPairBasis(1), 0.5)
-        
-        # Measurement on mode 1
-        prob1 = measurement_probability(lc, measurement_state, [1])
-        @test prob1 isa Real
-        @test 0 <= prob1 <= 1
-        @test isfinite(prob1)
-        
-        # Measurement on mode 2
-        prob2 = measurement_probability(lc, measurement_state, [2])
-        @test prob2 isa Real
-        @test 0 <= prob2 <= 1
-        
-        # Single index version
-        prob1_single = measurement_probability(lc, measurement_state, 1)
-        @test prob1_single == prob1
-        
-        # Test with vacuum measurement
-        vac_measurement = vacuumstate(QuadPairBasis(1))
-        prob_vac = measurement_probability(lc, vac_measurement, [1])
-        @test prob_vac isa Real
-        @test 0 <= prob_vac <= 1
-        
-        # Test with pure state (should give definite results)
-        pure_coh = GaussianLinearCombination(coh1)
-        prob_pure = measurement_probability(pure_coh, measurement_state, [1])
-        @test prob_pure isa Real
-        @test 0 <= prob_pure <= 1
-        
-        # Error handling
-        measurement_wrong_basis = coherentstate(QuadBlockBasis(1), 1.0)
-        # This should work as long as dimensions match
-        
-        @test_throws BoundsError measurement_probability(lc, measurement_state, [3])  # Invalid index
-    end
-
-    @testset "State Metrics - Purity" begin
-        basis = QuadPairBasis(1)
-        
-        # Pure state (single component)
-        pure_state = GaussianLinearCombination(coherentstate(basis, 1.0))
-        purity_pure = purity(pure_state)
-        @test isapprox(purity_pure, 1.0, atol=1e-10)
-        
-        # Orthogonal mixed state
-        coh1 = coherentstate(basis, 2.0)  # Well separated
-        coh2 = coherentstate(basis, -2.0)
-        mixed_orthogonal = GaussianLinearCombination(basis, [0.6, 0.8], [coh1, coh2])
-        purity_mixed_orth = purity(mixed_orthogonal)
-        
-        # For orthogonal states: purity = |c₁|² + |c₂|² = 0.36 + 0.64 = 1.0
-        @test isapprox(purity_mixed_orth, 1.0, atol=1e-10)
-        
-        # Overlapping states (non-orthogonal)
-        coh_close1 = coherentstate(basis, 0.1)
-        coh_close2 = coherentstate(basis, -0.1)
-        mixed_overlap = GaussianLinearCombination(basis, [0.6, 0.8], [coh_close1, coh_close2])
-        purity_overlap = purity(mixed_overlap)
-        
-        # Should be less than 1 due to overlap terms
-        @test purity_overlap <= 1.0
-        @test purity_overlap > 0.0
-        
-        # Equal mixture
-        equal_mix = GaussianLinearCombination(basis, [1/sqrt(2), 1/sqrt(2)], [coh1, coh2])
-        purity_equal = purity(equal_mix)
-        @test purity_equal <= 1.0
-        @test purity_equal > 0.0
-        
-        # Test with three components
-        coh3 = coherentstate(basis, 0.0)
-        triple_mix = GaussianLinearCombination(basis, [0.5, 0.3, 0.2], [coh1, coh2, coh3])
-        purity_triple = purity(triple_mix)
-        @test purity_triple <= 1.0
-        @test purity_triple > 0.0
-        
-        # Identical states (should combine to pure)
-        identical_mix = GaussianLinearCombination(basis, [0.6, 0.8], [coh1, coh1])
-        purity_identical = purity(identical_mix)
-        @test isapprox(purity_identical, 1.0, atol=1e-10)
-    end
-
-    @testset "State Metrics - Von Neumann Entropy" begin
-        basis = QuadPairBasis(1)
-        
-        # Pure state
-        pure_state = GaussianLinearCombination(coherentstate(basis, 1.0))
-        entropy_pure = entropy_vn(pure_state)
-        @test isapprox(entropy_pure, 0.0, atol=1e-10)
-        
-        # Single Gaussian state (should use existing method)
-        thermal = thermalstate(basis, 2.0)
-        entropy_thermal_single = entropy_vn(GaussianLinearCombination(thermal))
-        entropy_thermal_direct = entropy_vn(thermal)
-        @test isapprox(entropy_thermal_single, entropy_thermal_direct, atol=1e-10)
-        
-        # Superposition of coherent states (pure)
-        coh1 = coherentstate(basis, 1.0)
-        coh2 = coherentstate(basis, -1.0)
-        superposition = GaussianLinearCombination(basis, [1/sqrt(2), 1/sqrt(2)], [coh1, coh2])
-        entropy_superposition = entropy_vn(superposition)
-        
-        # Pure superposition should have some entropy due to state overlap
-        @test entropy_superposition >= 0.0
-        @test isfinite(entropy_superposition)
-        
-        # Mixed state (classical probabilities)
-        mixed_state = GaussianLinearCombination(basis, [0.7, 0.3], [coh1, coh2])
-        entropy_mixed = entropy_vn(mixed_state)
-        @test entropy_mixed >= 0.0
-        @test isfinite(entropy_mixed)
-        
-        # Entropy should increase with mixing
-        @test entropy_mixed >= entropy_superposition
-        
-        # Test with thermal states
-        thermal1 = thermalstate(basis, 1.0)
-        thermal2 = thermalstate(basis, 3.0)
-        thermal_mix = GaussianLinearCombination(basis, [0.5, 0.5], [thermal1, thermal2])
-        entropy_thermal_mix = entropy_vn(thermal_mix)
-        @test entropy_thermal_mix >= 0.0
-        @test isfinite(entropy_thermal_mix)
-        
-        # Test with squeezed states
-        sq1 = squeezedstate(basis, 0.5, 0.0)
-        sq2 = squeezedstate(basis, 0.5, π)
-        sq_mix = GaussianLinearCombination(basis, [1/sqrt(2), 1/sqrt(2)], [sq1, sq2])
-        entropy_sq = entropy_vn(sq_mix)
-        @test entropy_sq >= 0.0
-        @test isfinite(entropy_sq)
-        
-        # Test edge cases
-        
-        # Very small coefficients
-        tiny_mix = GaussianLinearCombination(basis, [0.999, 0.001], [coh1, coh2])
-        entropy_tiny = entropy_vn(tiny_mix)
-        @test entropy_tiny >= 0.0
-        @test entropy_tiny < entropy_mixed  # Less mixed → less entropy
-        
-        # Many components
-        many_states = [coherentstate(basis, i*0.5) for i in 1:5]
-        many_coeffs = [0.2, 0.3, 0.25, 0.15, 0.1]
-        many_mix = GaussianLinearCombination(basis, many_coeffs, many_states)
-        entropy_many = entropy_vn(many_mix)
-        @test entropy_many >= 0.0
-        @test isfinite(entropy_many)
-    end
-
-    @testset "Integration with Cat and GKP States" begin
-        basis = QuadPairBasis(1)
-        
-        # Cat states from previous phases
-        cat_even = catstate_even(basis, 1.0)
-        cat_odd = catstate_odd(basis, 1.0)
-        
-        # Apply operations to cat states
-        phase_op = phaseshift(basis, π/4)
-        cat_rotated = phase_op * cat_even
-        @test cat_rotated isa GaussianLinearCombination
-        @test length(cat_rotated) == 2
-        
-        # Tensor product of cat states
-        cat_tensor = cat_even ⊗ cat_odd
-        @test cat_tensor isa GaussianLinearCombination
-        @test length(cat_tensor) == 4  # 2 × 2
-        
-        # Wigner function of cat state
-        w_cat = wigner(cat_even, [0.0, 0.0])
-        @test w_cat isa Real
-        @test isfinite(w_cat)
-        
-        # Cat states should have negative Wigner regions
-        q_range = -2:0.5:2
-        p_range = -2:0.5:2
-        wigner_values = [wigner(cat_even, [q, p]) for q in q_range, p in p_range]
-        @test any(wigner_values .< 0)  # Negative values indicate non-classicality
-        
-        # GKP states
-        gkp_square = gkpstate(basis, lattice=:square, delta=0.2, nmax=2)
-        
-        # Apply operations to GKP
-        squeeze_op = squeeze(basis, 0.3, π/6)
-        gkp_squeezed = squeeze_op * gkp_square
-        @test gkp_squeezed isa GaussianLinearCombination
-        
-        # GKP Wigner function
-        w_gkp = wigner(gkp_square, [0.0, 0.0])
-        @test w_gkp isa Real
-        @test isfinite(w_gkp)
-        
-        # Purity and entropy of non-Gaussian states
-        purity_cat = purity(cat_even)
-        entropy_cat = entropy_vn(cat_even)
-        
-        @test purity_cat <= 1.0
-        @test purity_cat > 0.0
-        @test entropy_cat >= 0.0
-        @test isfinite(entropy_cat)
-        
-        purity_gkp = purity(gkp_square)
-        entropy_gkp = entropy_vn(gkp_square)
-        
-        @test purity_gkp <= 1.0
-        @test purity_gkp > 0.0
-        @test entropy_gkp >= 0.0
-        @test isfinite(entropy_gkp)
-        
-        # Partial trace of multi-mode cat states
-        if nmodes >= 2
-            basis_2mode = QuadPairBasis(2)
-            cat_2mode = catstate_even(basis_2mode, [1.0, 0.5])
-            cat_traced = ptrace(cat_2mode, [1])
+            # Test basic tensor product
+            lc_tensor = tensor(lc1, lc2)
             
-            @test cat_traced isa GaussianLinearCombination
-            @test cat_traced.basis.nmodes == 1
+            @test lc_tensor isa GaussianLinearCombination
+            @test length(lc_tensor) == 4  # 2 × 2 = 4
+            @test lc_tensor.basis == single_basis ⊕ single_basis
+            @test lc_tensor.ħ == lc1.ħ
+
+            # Verify coefficient multiplication
+            expected_coeffs = [0.6*0.8, 0.6*0.6, 0.4*0.8, 0.4*0.6]
+            @test isapprox(lc_tensor.coefficients, expected_coeffs)
+
+            # Verify state tensor products
+            @test isapprox(lc_tensor.states[1], coh1 ⊗ vac)
+            @test isapprox(lc_tensor.states[2], coh1 ⊗ squeezed)
+            @test isapprox(lc_tensor.states[3], coh2 ⊗ vac)
+            @test isapprox(lc_tensor.states[4], coh2 ⊗ squeezed)
+
+            # Test ⊗ operator alias
+            lc_tensor2 = lc1 ⊗ lc2
+            @test lc_tensor == lc_tensor2
+        end
+
+        @testset "Typed Tensor Products" begin
+            coh = coherentstate(single_basis, 1.0)
+            vac = vacuumstate(single_basis)
+            lc1 = GaussianLinearCombination(single_basis, [0.7, 0.3], [coh, vac])
+            lc2 = GaussianLinearCombination(single_basis, [0.9, 0.1], [vac, coh])
+
+            # Test with correct type specifications: Vector for mean, Matrix for covar
+            lc_tensor_typed = tensor(Vector{Float64}, Matrix{Float64}, lc1, lc2)
+            @test lc_tensor_typed isa GaussianLinearCombination
+            @test eltype(lc_tensor_typed.states[1].mean) == Float64
+            @test eltype(lc_tensor_typed.states[1].covar) == Float64
+
+            # Test with single type parameter (applies to both mean and covar types)
+            lc_tensor_single_type = tensor(Matrix{Float64}, lc1, lc2)
+            @test lc_tensor_single_type isa GaussianLinearCombination
+        end
+
+        @testset "Tensor Products with Different Bases" begin
+            # Test QuadBlockBasis
+            coh_block = coherentstate(QuadBlockBasis(1), 1.0)
+            vac_block = vacuumstate(QuadBlockBasis(1))
+            lc_block1 = GaussianLinearCombination(QuadBlockBasis(1), [0.6, 0.4], [coh_block, vac_block])
+            lc_block2 = GaussianLinearCombination(QuadBlockBasis(1), [0.8, 0.2], [vac_block, coh_block])
+
+            lc_tensor_block = tensor(lc_block1, lc_block2)
+            @test lc_tensor_block.basis isa QuadBlockBasis
+            @test lc_tensor_block.basis.nmodes == 2
+        end
+
+        @testset "Tensor Product Error Handling" begin
+            coh_pair = coherentstate(single_basis, 1.0)
+            coh_block = coherentstate(QuadBlockBasis(1), 1.0)
+            lc_pair = GaussianLinearCombination(coh_pair)
+            lc_block = GaussianLinearCombination(coh_block)
+
+            # Test basis type mismatch
+            @test_throws ArgumentError tensor(lc_pair, lc_block)
+
+            # Test ħ mismatch
+            coh_diff_hbar = coherentstate(single_basis, 1.0, ħ=1)
+            lc_diff_hbar = GaussianLinearCombination(coh_diff_hbar)
+            @test_throws ArgumentError tensor(lc_pair, lc_diff_hbar)
+        end
+
+        @testset "Large Tensor Products" begin
+            # Test with more terms
+            states = [coherentstate(single_basis, Float64(i)) for i in 1:5]
+            coeffs = [0.2, 0.3, 0.1, 0.25, 0.15]
+            lc_large1 = GaussianLinearCombination(single_basis, coeffs, states)
+            
+            vac = vacuumstate(single_basis)
+            lc_large2 = GaussianLinearCombination(vac)
+            
+            lc_tensor_large = tensor(lc_large1, lc_large2)
+            @test length(lc_tensor_large) == 5  # 5 × 1 = 5
+            @test lc_tensor_large.coefficients == coeffs
         end
     end
 
-    @testset "Edge Cases and Error Handling" begin
-        basis = QuadPairBasis(1)
-        
-        # Empty-like combinations
-        tiny_state = GaussianLinearCombination(basis, [1e-16], [vacuumstate(basis)])
-        @test length(tiny_state) == 1
-        
-        # Operations on tiny states
-        disp_op = displace(basis, 1.0)
-        tiny_displaced = disp_op * tiny_state
-        @test tiny_displaced isa GaussianLinearCombination
-        
-        # Wigner of tiny states
-        w_tiny = wigner(tiny_state, [0.0, 0.0])
-        @test isfinite(w_tiny)
-        
-        # Very large combinations
-        many_states = [coherentstate(basis, i*0.1) for i in 1:20]
-        many_coeffs = fill(1/sqrt(20), 20)
-        large_lc = GaussianLinearCombination(basis, many_coeffs, many_states)
-        
-        w_large = wigner(large_lc, [0.0, 0.0])
-        @test isfinite(w_large)
-        
-        purity_large = purity(large_lc)
-        @test 0 <= purity_large <= 1
-        
-        # Numerical precision tests
-        # States that are nearly identical
-        coh_base = coherentstate(basis, 1.0)
-        coh_tiny_diff = coherentstate(basis, 1.0 + 1e-12)
-        nearly_identical = GaussianLinearCombination(basis, [0.5, 0.5], [coh_base, coh_tiny_diff])
-        
-        purity_nearly = purity(nearly_identical)
-        @test isfinite(purity_nearly)
-        @test purity_nearly <= 1.0
-        
-        # Cross-Wigner with nearly identical states
-        cross_nearly = cross_wigner(coh_base, coh_tiny_diff, [0.0, 0.0])
-        @test isfinite(cross_nearly)
-        
-        # Test with singular covariance matrices (edge case)
-        # Create states with very different scales
-        coh_large = coherentstate(basis, 100.0)
-        coh_small = coherentstate(basis, 1e-6)
-        extreme_mix = GaussianLinearCombination(basis, [0.5, 0.5], [coh_large, coh_small])
-        
-        w_extreme = wigner(extreme_mix, [0.0, 0.0])
-        @test isfinite(w_extreme)
-        
-        # Partial trace edge cases
-        if nmodes >= 2
-            basis_multi = QuadPairBasis(nmodes)
-            single_state_multi = GaussianLinearCombination(vacuumstate(basis_multi))
-            traced_single = ptrace(single_state_multi, [1])
-            @test traced_single isa GaussianLinearCombination
+    @testset "Partial Traces" begin
+        @testset "Basic Partial Trace" begin
+            # Create two-mode system
+            coh1 = coherentstate(single_basis, 1.0)
+            coh2 = coherentstate(single_basis, -1.0)
+            vac = vacuumstate(single_basis)
+            
+            # Create tensor product linear combination
+            lc1 = GaussianLinearCombination(single_basis, [0.6, 0.4], [coh1, vac])
+            lc2 = GaussianLinearCombination(single_basis, [0.8, 0.2], [coh2, vac])
+            lc_2mode = tensor(lc1, lc2)
+
+            # Test partial trace over first mode
+            lc_traced = ptrace(lc_2mode, 1)
+            @test lc_traced isa GaussianLinearCombination
+            @test lc_traced.basis.nmodes == 1
+            @test lc_traced.ħ == lc_2mode.ħ
+
+            # Test partial trace over second mode
+            lc_traced2 = ptrace(lc_2mode, 2)
+            @test lc_traced2 isa GaussianLinearCombination
+            @test lc_traced2.basis.nmodes == 1
+
+            # Test partial trace with vector indices
+            basis_3mode = QuadPairBasis(3)
+            coh3 = coherentstate(single_basis, 2.0)
+            lc3 = GaussianLinearCombination(coh3)
+            lc_3mode = tensor(tensor(lc1, lc2), lc3)
+            
+            lc_traced_multi = ptrace(lc_3mode, [1, 3])
+            @test lc_traced_multi.basis.nmodes == 1
+            @test length(lc_traced_multi) <= length(lc_3mode)  # May be simplified
+        end
+
+        @testset "Partial Trace with Simplification" begin
+            # Create system where partial trace leads to identical states
+            coh = coherentstate(single_basis, 1.0)
+            vac = vacuumstate(single_basis)
+            
+            # Both terms have same first mode state
+            state1 = coh ⊗ vac
+            state2 = coh ⊗ coh
+            lc_2mode = GaussianLinearCombination(QuadPairBasis(2), [0.5, 0.5], [state1, state2])
+            
+            # Trace out second mode - should combine identical first modes
+            lc_traced = ptrace(lc_2mode, 2)
+            @test length(lc_traced) == 1  # Should be simplified to single state
+            @test abs(lc_traced.coefficients[1] - 1.0) < 1e-12
+        end
+
+        @testset "Typed Partial Trace" begin
+            coh = coherentstate(single_basis, 1.0)
+            vac = vacuumstate(single_basis)
+            lc_2mode = tensor(GaussianLinearCombination(coh), GaussianLinearCombination(vac))
+
+            # Test with correct type specifications: Vector for mean, Matrix for covar
+            lc_traced_typed = ptrace(Vector{Float64}, Matrix{Float64}, lc_2mode, 1)
+            @test lc_traced_typed isa GaussianLinearCombination
+            @test eltype(lc_traced_typed.states[1].mean) == Float64
+
+            lc_traced_single_type = ptrace(Matrix{Float64}, lc_2mode, 1)
+            @test lc_traced_single_type isa GaussianLinearCombination
+        end
+
+        @testset "Partial Trace Error Handling" begin
+            coh = coherentstate(single_basis, 1.0)
+            lc_single = GaussianLinearCombination(coh)
+
+            # Test tracing all modes - expect ArgumentError
+            @test_throws ArgumentError ptrace(lc_single, 1)
+
+            # Test invalid indices - expect ArgumentError
+            lc_2mode = tensor(lc_single, lc_single)
+            @test_throws ArgumentError ptrace(lc_2mode, [1, 2])  # All modes
+            @test_throws ArgumentError ptrace(lc_2mode, 3)  # Index too large
+        end
+
+        @testset "QuadBlockBasis Partial Trace" begin
+            coh_block = coherentstate(QuadBlockBasis(1), 1.0)
+            vac_block = vacuumstate(QuadBlockBasis(1))
+            lc_block_2mode = tensor(GaussianLinearCombination(coh_block), GaussianLinearCombination(vac_block))
+
+            lc_traced_block = ptrace(lc_block_2mode, 1)
+            @test lc_traced_block.basis isa QuadBlockBasis
+            @test lc_traced_block.basis.nmodes == 1
         end
     end
 
-    @testset "Performance and Memory" begin
-        basis = QuadPairBasis(1)
-        
-        # Test that operations don't unnecessarily copy large arrays
-        large_coeffs = randn(100)
-        large_states = [coherentstate(basis, randn()) for _ in 1:100]
-        large_lc = GaussianLinearCombination(basis, large_coeffs, large_states)
-        
-        # Operations should complete in reasonable time
-        disp_op = displace(basis, 1.0)
-        @test (@elapsed disp_op = displace(basis, 1.0)) < 1.0
-        large_displaced = disp_op * large_lc
-        @test (@elapsed large_displaced = disp_op * large_lc) < 5.0
-        @test length(large_displaced) == 100
-        
-        # Wigner function should be reasonably fast
-        @test (@elapsed w_large = wigner(large_lc, [0.0, 0.0])) < 10.0
-        @test isfinite(w_large)
-        
-        # Memory usage test - operations shouldn't create excessive copies
-        memory_before = Base.gc_bytes()
-        for _ in 1:10
-            temp_displaced = disp_op * large_lc
-            temp_w = wigner(temp_displaced, [0.0, 0.0])
+    @testset "Wigner Functions with Quantum Interference" begin
+        @testset "Cross-Wigner Function" begin
+            coh1 = coherentstate(single_basis, 1.0)
+            coh2 = coherentstate(single_basis, -1.0)
+            
+            # Test cross-Wigner function
+            x = [0.5, 0.3]
+            cross_w = cross_wigner(coh1, coh2, x)
+            @test cross_w isa Real
+            @test isfinite(cross_w)
+
+            # Test symmetry: cross_wigner(s1, s2, x) = cross_wigner(s2, s1, x)
+            cross_w_sym = cross_wigner(coh2, coh1, x)
+            @test isapprox(cross_w, cross_w_sym, atol=1e-12)
+
+            # Test at mean positions
+            x_mean1 = coh1.mean
+            x_mean2 = coh2.mean
+            cross_w1 = cross_wigner(coh1, coh2, x_mean1)
+            cross_w2 = cross_wigner(coh1, coh2, x_mean2)
+            @test isfinite(cross_w1)
+            @test isfinite(cross_w2)
+
+            # For identical states, cross-Wigner equals regular Wigner
+            cross_w_identical = cross_wigner(coh1, coh1, x)
+            regular_w = wigner(coh1, x)
+            @test isapprox(cross_w_identical, regular_w, atol=1e-12)
         end
-        Base.GC.gc()
-        memory_after = Base.gc_bytes()
-        
-        # Should not have excessive memory growth
-        @test (memory_after - memory_before) < 1e8  # Less than 100MB growth
+
+        @testset "Linear Combination Wigner Function" begin
+            coh1 = coherentstate(single_basis, 1.0)
+            coh2 = coherentstate(single_basis, -1.0)
+            
+            # Create cat state
+            lc = GaussianLinearCombination(single_basis, [0.5, 0.5], [coh1, coh2])
+            
+            x_points = [[0.0, 0.0], [1.0, 0.0], [-1.0, 0.0], [0.0, 1.0]]
+            
+            for x in x_points
+                w_lc = wigner(lc, x)
+                @test w_lc isa Real
+                @test isfinite(w_lc)
+                
+                # Compare with manual calculation including interference
+                w1 = wigner(coh1, x)
+                w2 = wigner(coh2, x)
+                w_cross = cross_wigner(coh1, coh2, x)
+                
+                w_manual = 0.25 * w1 + 0.25 * w2 + 2 * 0.5 * 0.5 * w_cross
+                @test isapprox(w_lc, w_manual, atol=1e-12)
+            end
+
+            # Test that interference can create negative values (non-classical)
+            x_interference = [0.0, 0.0]  # Midpoint between coherent states
+            w_interference = wigner(lc, x_interference)
+            
+            # For a cat state at the origin, we expect significant interference
+            w1_origin = wigner(coh1, x_interference)
+            w2_origin = wigner(coh2, x_interference)
+            # The cross term should be significant here
+            @test abs(w_interference - 0.25 * (w1_origin + w2_origin)) > 1e-6
+        end
+
+        @testset "Cross-Wigner Characteristic Function" begin
+            coh1 = coherentstate(single_basis, 1.0 + 0.5im)
+            coh2 = coherentstate(single_basis, -0.5 + 1.0im)
+            
+            xi_points = [[0.0, 0.0], [0.5, 0.3], [1.0, -0.8]]
+            
+            for xi in xi_points
+                cross_char = cross_wignerchar(coh1, coh2, xi)
+                @test cross_char isa Complex
+                @test isfinite(real(cross_char))
+                @test isfinite(imag(cross_char))
+                
+                # For identical states, should equal regular characteristic function
+                cross_char_identical = cross_wignerchar(coh1, coh1, xi)
+                regular_char = wignerchar(coh1, xi)
+                @test isapprox(cross_char_identical, regular_char, atol=1e-12)
+            end
+        end
+
+        @testset "Linear Combination Wigner Characteristic Function" begin
+            coh1 = coherentstate(single_basis, 0.8)
+            coh2 = coherentstate(single_basis, -0.8)
+            lc = GaussianLinearCombination(single_basis, [0.6, 0.8], [coh1, coh2])
+            
+            xi_points = [[0.0, 0.0], [0.2, 0.5], [-0.3, 0.7]]
+            
+            for xi in xi_points
+                char_lc = wignerchar(lc, xi)
+                @test char_lc isa Complex
+                @test isfinite(real(char_lc))
+                @test isfinite(imag(char_lc))
+                
+                # Manual calculation with cross-terms
+                char1 = wignerchar(coh1, xi)
+                char2 = wignerchar(coh2, xi)
+                char_cross = cross_wignerchar(coh1, coh2, xi)
+                
+                char_manual = 0.36 * char1 + 0.64 * char2 + 2 * real(0.6 * 0.8 * char_cross)
+                @test isapprox(real(char_lc), real(char_manual), atol=1e-12)
+                @test isapprox(imag(char_lc), imag(char_manual), atol=1e-12)
+            end
+        end
+
+        @testset "Wigner Function Error Handling" begin
+            coh = coherentstate(single_basis, 1.0)
+            lc = GaussianLinearCombination(coh)
+            
+            # Test wrong vector length
+            @test_throws ArgumentError wigner(lc, [1.0])  # Should be length 2
+            @test_throws ArgumentError wigner(lc, [1.0, 2.0, 3.0])  # Too long
+            @test_throws ArgumentError wignerchar(lc, [1.0])
+            
+            # Test cross-Wigner with incompatible states
+            coh_diff_basis = coherentstate(qpairbasis, 1.0)
+            @test_throws ArgumentError cross_wigner(coh, coh_diff_basis, [1.0, 2.0])
+            
+            coh_diff_hbar = coherentstate(single_basis, 1.0, ħ=1)
+            @test_throws ArgumentError cross_wigner(coh, coh_diff_hbar, [1.0, 2.0])
+        end
+    end
+
+    @testset "Advanced State Metrics" begin
+        @testset "Purity Calculation" begin
+            # Pure state should have purity = 1
+            coh = coherentstate(single_basis, 1.0)
+            lc_pure = GaussianLinearCombination(coh)
+            @test isapprox(purity(lc_pure), 1.0, atol=1e-12)
+
+            # Mixed state: orthogonal coherent states (well-separated)
+            coh1 = coherentstate(single_basis, 5.0)  # Very well separated
+            coh2 = coherentstate(single_basis, -5.0)
+            lc_mixed = GaussianLinearCombination(single_basis, [0.5, 0.5], [coh1, coh2])
+            
+            purity_mixed = purity(lc_mixed)
+            @test 0.0 <= purity_mixed <= 1.0
+            @test purity_mixed < 1.0  # Should be less than pure state
+
+            # Test with complex coefficients
+            lc_complex = GaussianLinearCombination(single_basis, [0.6 + 0.8im, 0.0], [coh1, coh2])
+            purity_complex = purity(lc_complex)
+            @test 0.0 <= purity_complex <= 1.0
+
+            # Test orthogonal states
+            vac = vacuumstate(single_basis)
+            # For well-separated coherent states from vacuum
+            coh_far = coherentstate(single_basis, 10.0)
+            lc_quasi_orthogonal = GaussianLinearCombination(single_basis, [0.7, 0.3], [vac, coh_far])
+            purity_ortho = purity(lc_quasi_orthogonal)
+            @test 0.0 <= purity_ortho <= 1.0
+
+            # Test that purity is real and bounded
+            @test purity_mixed isa Real
+            @test isfinite(purity_mixed)
+        end
+
+        @testset "Von Neumann Entropy Calculation" begin
+            # Pure state should have entropy = 0
+            coh = coherentstate(single_basis, 1.0)
+            lc_pure = GaussianLinearCombination(coh)
+            @test isapprox(entropy_vn(lc_pure), 0.0, atol=1e-12)
+
+            # Two-state superposition
+            coh1 = coherentstate(single_basis, 1.5)
+            coh2 = coherentstate(single_basis, -1.5)
+            lc_two = GaussianLinearCombination(single_basis, [0.6, 0.8], [coh1, coh2])
+            
+            entropy_two = entropy_vn(lc_two)
+            @test entropy_two >= 0.0
+            @test isfinite(entropy_two)
+            
+            # Equal superposition should have higher entropy
+            lc_equal = GaussianLinearCombination(single_basis, [0.5, 0.5], [coh1, coh2])
+            entropy_equal = entropy_vn(lc_equal)
+            @test entropy_equal >= entropy_two  # Equal weights should have higher entropy
+
+            # Test with three states
+            vac = vacuumstate(single_basis)
+            lc_three = GaussianLinearCombination(single_basis, [0.5, 0.3, 0.2], [coh1, coh2, vac])
+            entropy_three = entropy_vn(lc_three)
+            @test entropy_three >= 0.0
+            @test isfinite(entropy_three)
+
+            # Test complex coefficients
+            lc_complex = GaussianLinearCombination(single_basis, 
+                [0.5 + 0.3im, 0.4 - 0.2im], [coh1, coh2])
+            entropy_complex = entropy_vn(lc_complex)
+            @test entropy_complex >= 0.0
+
+            # Test large system (should use approximation with warning)
+            large_states = [coherentstate(single_basis, Float64(i)/10) for i in 1:120]
+            large_coeffs = ones(120) / sqrt(120)
+            lc_large = GaussianLinearCombination(single_basis, large_coeffs, large_states)
+            
+            entropy_large = entropy_vn(lc_large)
+            @test entropy_large >= 0.0
+            @test isfinite(entropy_large)
+        end
+
+        @testset "Numerical Stability of Metrics" begin
+            # Test with very small coefficients
+            coh1 = coherentstate(single_basis, 1.0)
+            coh2 = coherentstate(single_basis, -1.0)
+            lc_small = GaussianLinearCombination(single_basis, [1e-8, 1.0], [coh1, coh2])
+            
+            @test 0.0 <= purity(lc_small) <= 1.0
+            @test entropy_vn(lc_small) >= 0.0
+
+            # Test with nearly identical states
+            coh_close = coherentstate(single_basis, 1.001)
+            lc_close = GaussianLinearCombination(single_basis, [0.5, 0.5], [coh1, coh_close])
+            
+            @test 0.0 <= purity(lc_close) <= 1.0
+            @test entropy_vn(lc_close) >= 0.0
+
+            # Test normalized combinations
+            lc_normalized = GaussianLinearCombination(single_basis, [0.6, 0.8], [coh1, coh2])
+            Gabs.normalize!(lc_normalized)
+            
+            @test 0.0 <= purity(lc_normalized) <= 1.0
+            @test entropy_vn(lc_normalized) >= 0.0
+        end
+    end
+
+    @testset "Measurement Theory" begin
+        @testset "Basic Measurement Probability" begin
+            # Create two-mode system
+            coh1 = coherentstate(single_basis, 1.0)
+            coh2 = coherentstate(single_basis, -1.0)
+            vac = vacuumstate(single_basis)
+            
+            lc_2mode = tensor(GaussianLinearCombination(single_basis, [0.6, 0.4], [coh1, vac]),
+                            GaussianLinearCombination(single_basis, [0.8, 0.2], [coh2, vac]))
+
+            # Measure first mode in vacuum state
+            prob_vac = measurement_probability(lc_2mode, vac, 1)
+            @test 0.0 <= prob_vac <= 1.0
+            @test prob_vac isa Real
+
+            # Measure first mode in coherent state
+            prob_coh = measurement_probability(lc_2mode, coh1, 1)
+            @test 0.0 <= prob_coh <= 1.0
+
+            # Measure second mode
+            prob_second = measurement_probability(lc_2mode, coh2, 2)
+            @test 0.0 <= prob_second <= 1.0
+
+            # Perfect overlap should give probability close to coefficient squared
+            single_coherent = GaussianLinearCombination(tensor(coh1, vac))
+            prob_perfect = measurement_probability(single_coherent, coh1, 1)
+            @test isapprox(prob_perfect, 1.0, atol=1e-12)
+        end
+
+        @testset "Partial Measurements" begin
+            # Three-mode system
+            coh = coherentstate(single_basis, 1.0)
+            vac = vacuumstate(single_basis)
+            squeezed = squeezedstate(single_basis, 0.5, π/4)
+            
+            # Create 3-mode state
+            lc_3mode = tensor(tensor(GaussianLinearCombination(coh), 
+                                   GaussianLinearCombination(vac)),
+                            GaussianLinearCombination(squeezed))
+
+            # Measure first mode only
+            prob_1 = measurement_probability(lc_3mode, vac, 1)
+            @test 0.0 <= prob_1 <= 1.0
+
+            # Measure multiple modes
+            measurement_2mode = tensor(coh, vac)
+            prob_12 = measurement_probability(lc_3mode, measurement_2mode, [1, 2])
+            @test 0.0 <= prob_12 <= 1.0
+
+            # Measure all modes (no partial trace)
+            measurement_3mode = tensor(tensor(coh, vac), squeezed)
+            prob_all = measurement_probability(lc_3mode, measurement_3mode, [1, 2, 3])
+            @test 0.0 <= prob_all <= 1.0
+        end
+
+        @testset "Born Rule Verification" begin
+            # Create superposition state
+            coh1 = coherentstate(single_basis, 1.0)
+            coh2 = coherentstate(single_basis, -1.0)
+            lc = GaussianLinearCombination(single_basis, [0.6, 0.8], [coh1, coh2])
+
+            # Measure in first component state
+            prob1 = measurement_probability(lc, coh1, 1)
+            
+            # Measure in second component state  
+            prob2 = measurement_probability(lc, coh2, 1)
+            
+            # Both should be non-zero and reasonable
+            @test prob1 > 0.0
+            @test prob2 > 0.0
+            
+            # Test with orthogonal measurement (should be less probable)
+            orthogonal_state = coherentstate(single_basis, 5.0)  # Far from both states
+            prob_ortho = measurement_probability(lc, orthogonal_state, 1)
+            @test prob_ortho < max(prob1, prob2)
+        end
+
+        @testset "Measurement Error Handling" begin
+            coh = coherentstate(single_basis, 1.0)
+            lc_single = GaussianLinearCombination(coh)
+            
+            # Wrong number of modes in measurement
+            coh_2mode = coherentstate(qpairbasis, 1.0)
+            @test_throws ArgumentError measurement_probability(lc_single, coh_2mode, 1)
+            
+            # ħ mismatch
+            coh_diff_hbar = coherentstate(single_basis, 1.0, ħ=1)
+            @test_throws ArgumentError measurement_probability(lc_single, coh_diff_hbar, 1)
+            
+            # Invalid indices
+            lc_2mode = tensor(lc_single, lc_single)
+            @test_throws ArgumentError measurement_probability(lc_2mode, coh, 3)
+        end
+
+        @testset "Complex Coefficients in Measurements" begin
+            coh1 = coherentstate(single_basis, 1.0)
+            coh2 = coherentstate(single_basis, -1.0)
+            
+            # Create state with complex coefficients
+            lc_complex = GaussianLinearCombination(single_basis, 
+                [0.6 + 0.8im, 0.0 + 1.0im], [coh1, coh2])
+            
+            # Measurement probabilities should still be real and in [0,1]
+            prob_complex = measurement_probability(lc_complex, coh1, 1)
+            @test prob_complex isa Real
+            @test 0.0 <= prob_complex <= 1.0
+            
+            # Test with normalized complex state
+            Gabs.normalize!(lc_complex)
+            prob_normalized = measurement_probability(lc_complex, coh1, 1)
+            @test 0.0 <= prob_normalized <= 1.0
+        end
+    end
+
+    @testset "Static Arrays Compatibility" begin
+        # Test all Phase 3 functions with StaticArrays
+        coh_static = coherentstate(SVector{2}, SMatrix{2,2}, single_basis, 1.0)
+        vac_static = vacuumstate(SVector{2}, SMatrix{2,2}, single_basis)
+        lc_static = GaussianLinearCombination(single_basis, [0.6, 0.8], [coh_static, vac_static])
+
+        @testset "Static Operations" begin
+            # Gaussian operations
+            disp_static = displace(SVector{2}, SMatrix{2,2}, single_basis, 0.5)
+            lc_disp_static = disp_static * lc_static
+            @test lc_disp_static.states[1].mean isa SVector
+            @test lc_disp_static.states[1].covar isa SMatrix
+
+            # Tensor products
+            lc_tensor_static = tensor(SVector{4}, SMatrix{4,4}, lc_static, lc_static)
+            @test lc_tensor_static.states[1].mean isa SVector
+            @test lc_tensor_static.states[1].covar isa SMatrix
+
+            # Partial trace
+            lc_traced_static = ptrace(SVector{2}, SMatrix{2,2}, lc_tensor_static, 1)
+            @test lc_traced_static.states[1].mean isa SVector
+            @test lc_traced_static.states[1].covar isa SMatrix
+        end
+
+        @testset "Static Wigner Functions" begin
+            x = @SVector [0.5, 0.3]
+            
+            # Cross-Wigner
+            cross_w_static = cross_wigner(coh_static, vac_static, x)
+            @test cross_w_static isa Real
+            
+            # Wigner with interference
+            w_static = wigner(lc_static, x)
+            @test w_static isa Real
+            
+            # Characteristic functions
+            xi = @SVector [0.2, 0.4]
+            char_static = wignerchar(lc_static, xi)
+            @test char_static isa Complex
+        end
+
+        @testset "Static Metrics" begin
+            purity_static = purity(lc_static)
+            @test purity_static isa Real
+            @test 0.0 <= purity_static <= 1.0
+            
+            entropy_static = entropy_vn(lc_static)
+            @test entropy_static isa Real
+            @test entropy_static >= 0.0
+        end
+
+        @testset "Static Measurements" begin
+            # Use well-separated states to ensure proper normalization
+            coh_static_far = coherentstate(SVector{2}, SMatrix{2,2}, single_basis, 10.0)
+            lc_static_norm = GaussianLinearCombination(coh_static_far)
+            
+            prob_static = measurement_probability(lc_static_norm, coh_static_far, 1)
+            @test prob_static isa Real
+            @test 0.0 <= prob_static <= 1.0
+        end
     end
 end

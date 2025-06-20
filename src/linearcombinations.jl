@@ -326,3 +326,421 @@ function Base.isapprox(lc1::GaussianLinearCombination, lc2::GaussianLinearCombin
            all(isapprox(s1, s2; kwargs...) for (s1, s2) in zip(lc1.states, lc2.states))
 end
 
+# Phase 3: Integration and Advanced Features
+
+## Gaussian Operations Integration
+
+"""
+    *(op::GaussianUnitary, lc::GaussianLinearCombination)
+
+Apply a Gaussian unitary operation to a linear combination of Gaussian states.
+The unitary is applied to each component state while preserving coefficients.
+"""
+function Base.:(*)(op::GaussianUnitary, lc::GaussianLinearCombination)
+    op.basis == lc.basis || throw(ArgumentError(ACTION_ERROR))
+    op.ħ == lc.ħ || throw(ArgumentError(HBAR_ERROR))
+    
+    new_states = [op * state for state in lc.states]
+    return GaussianLinearCombination(lc.basis, copy(lc.coefficients), new_states)
+end
+
+"""
+    *(op::GaussianChannel, lc::GaussianLinearCombination)
+
+Apply a Gaussian channel to a linear combination of Gaussian states.
+The channel is applied to each component state while preserving coefficients.
+"""
+function Base.:(*)(op::GaussianChannel, lc::GaussianLinearCombination)
+    op.basis == lc.basis || throw(ArgumentError(ACTION_ERROR))
+    op.ħ == lc.ħ || throw(ArgumentError(HBAR_ERROR))
+    
+    new_states = [op * state for state in lc.states]
+    return GaussianLinearCombination(lc.basis, copy(lc.coefficients), new_states)
+end
+
+## Tensor Products
+
+"""
+    tensor(::Type{Tc}, ::Type{Ts}, lc1::GaussianLinearCombination, lc2::GaussianLinearCombination)
+
+Compute tensor product of two linear combinations with specified output types.
+Creates all pairwise tensor products: Σᵢⱼ cᵢcⱼ |ψᵢ⟩ ⊗ |ϕⱼ⟩.
+"""
+function tensor(::Type{Tc}, ::Type{Ts}, lc1::GaussianLinearCombination, lc2::GaussianLinearCombination) where {Tc,Ts}
+    typeof(lc1.basis) == typeof(lc2.basis) || throw(ArgumentError(SYMPLECTIC_ERROR))
+    lc1.ħ == lc2.ħ || throw(ArgumentError(HBAR_ERROR))
+    
+    new_basis = lc1.basis ⊕ lc2.basis
+    
+    # Create all pairwise tensor products
+    n1, n2 = length(lc1), length(lc2)
+    CoeffType = promote_type(eltype(lc1.coefficients), eltype(lc2.coefficients))
+    new_coeffs = Vector{CoeffType}(undef, n1 * n2)
+    new_states = Vector{GaussianState}(undef, n1 * n2)
+    
+    idx = 1
+    for (c1, s1) in lc1
+        for (c2, s2) in lc2
+            new_coeffs[idx] = c1 * c2
+            new_states[idx] = tensor(Tc, Ts, s1, s2)
+            idx += 1
+        end
+    end
+    
+    return GaussianLinearCombination(new_basis, new_coeffs, new_states)
+end
+
+tensor(::Type{T}, lc1::GaussianLinearCombination, lc2::GaussianLinearCombination) where {T} = tensor(T, T, lc1, lc2)
+
+"""
+    tensor(lc1::GaussianLinearCombination, lc2::GaussianLinearCombination)
+
+Compute tensor product of two linear combinations of Gaussian states.
+"""
+function tensor(lc1::GaussianLinearCombination, lc2::GaussianLinearCombination)
+    typeof(lc1.basis) == typeof(lc2.basis) || throw(ArgumentError(SYMPLECTIC_ERROR))
+    lc1.ħ == lc2.ħ || throw(ArgumentError(HBAR_ERROR))
+    
+    new_basis = lc1.basis ⊕ lc2.basis
+    
+    # Create all pairwise tensor products
+    n1, n2 = length(lc1), length(lc2)
+    CoeffType = promote_type(eltype(lc1.coefficients), eltype(lc2.coefficients))
+    new_coeffs = Vector{CoeffType}(undef, n1 * n2)
+    new_states = Vector{GaussianState}(undef, n1 * n2)
+    
+    idx = 1
+    for (c1, s1) in lc1
+        for (c2, s2) in lc2
+            new_coeffs[idx] = c1 * c2
+            new_states[idx] = s1 ⊗ s2
+            idx += 1
+        end
+    end
+    
+    return GaussianLinearCombination(new_basis, new_coeffs, new_states)
+end
+
+## Partial Traces
+
+"""
+    ptrace(::Type{Tc}, ::Type{Ts}, lc::GaussianLinearCombination, indices)
+
+Compute partial trace of a linear combination with specified output types.
+"""
+function ptrace(::Type{Tc}, ::Type{Ts}, lc::GaussianLinearCombination, indices::Union{Int, AbstractVector{<:Int}}) where {Tc,Ts}
+    indices_vec = indices isa Int ? [indices] : collect(indices)
+    length(indices_vec) < lc.basis.nmodes || throw(ArgumentError(INDEX_ERROR))
+    
+    # Apply ptrace to each component state
+    traced_states = [ptrace(Tc, Ts, state, indices_vec) for state in lc.states]
+    
+    # Create new linear combination with traced states
+    result = GaussianLinearCombination(traced_states[1].basis, copy(lc.coefficients), traced_states)
+    
+    # Combine identical states automatically using simplify!
+    simplify!(result)
+    
+    return result
+end
+
+ptrace(::Type{T}, lc::GaussianLinearCombination, indices::Union{Int, AbstractVector{<:Int}}) where {T} = ptrace(T, T, lc, indices)
+
+"""
+    ptrace(lc::GaussianLinearCombination, indices)
+
+Compute partial trace of a linear combination over specified indices.
+Combines identical traced states automatically.
+"""
+function ptrace(lc::GaussianLinearCombination, indices::Union{Int, AbstractVector{<:Int}})
+    indices_vec = indices isa Int ? [indices] : collect(indices)
+    length(indices_vec) < lc.basis.nmodes || throw(ArgumentError(INDEX_ERROR))
+    
+    # Apply ptrace to each component state
+    traced_states = [ptrace(state, indices_vec) for state in lc.states]
+    
+    # Create new linear combination with traced states
+    result = GaussianLinearCombination(traced_states[1].basis, copy(lc.coefficients), traced_states)
+    
+    # Combine identical states automatically using simplify!
+    simplify!(result)
+    
+    return result
+end
+
+## Complete Wigner Functions with Quantum Interference
+
+"""
+    cross_wigner(state1::GaussianState, state2::GaussianState, x::AbstractVector)
+
+Compute cross-Wigner function between two Gaussian states at point x.
+W(ψ₁,ψ₂,x) = (4/π)^N * exp(-2(x-μ₁₂)ᵀV₁₂⁻¹(x-μ₁₂)) / √det(4V₁₂)
+where μ₁₂ = (μ₁+μ₂)/2, V₁₂ = (V₁+V₂)/2, and N is the number of modes.
+"""
+function cross_wigner(state1::GaussianState, state2::GaussianState, x::AbstractVector)
+    state1.basis == state2.basis || throw(ArgumentError(SYMPLECTIC_ERROR))
+    state1.ħ == state2.ħ || throw(ArgumentError(HBAR_ERROR))
+    length(x) == length(state1.mean) || throw(ArgumentError(WIGNER_ERROR))
+    
+    # For identical states, return regular Wigner function
+    if state1 === state2 || (isapprox(state1.mean, state2.mean, atol=1e-12) && isapprox(state1.covar, state2.covar, atol=1e-12))
+        return wigner(state1, x)
+    end
+    
+    # Cross-Wigner function calculation
+    μ1, μ2 = state1.mean, state2.mean
+    V1, V2 = state1.covar, state2.covar
+    
+    μ12 = (μ1 + μ2) / 2
+    V12 = (V1 + V2) / 2
+    
+    diff = x - μ12
+    arg = -0.5 * dot(diff, V12 \ diff)
+    
+    nmodes = state1.basis.nmodes
+    norm_factor = 1 / ((2π)^nmodes * sqrt(det(V12)))
+    
+    return norm_factor * exp(arg)
+end
+
+"""
+    wigner(lc::GaussianLinearCombination, x::AbstractVector)
+
+Compute Wigner function of a linear combination including quantum interference.
+W(x) = Σᵢ |cᵢ|² Wᵢ(x) + 2 Σᵢ<ⱼ Re(cᵢ*cⱼ W_cross(ψᵢ,ψⱼ,x))
+"""
+function wigner(lc::GaussianLinearCombination, x::AbstractVector)
+    length(x) == length(lc.states[1].mean) || throw(ArgumentError(WIGNER_ERROR))
+    
+    result = 0.0
+    
+    # Diagonal terms: Σᵢ |cᵢ|² Wᵢ(x)
+    for (c, state) in lc
+        result += abs2(c) * wigner(state, x)
+    end
+    
+    # Cross terms: 2 Σᵢ<ⱼ Re(cᵢ*cⱼ W_cross(ψᵢ,ψⱼ,x))
+    for i in 1:length(lc)
+        ci, si = lc[i]
+        for j in (i+1):length(lc)
+            cj, sj = lc[j]
+            cross_term = 2 * real(conj(ci) * cj * cross_wigner(si, sj, x))
+            result += cross_term
+        end
+    end
+    
+    return result
+end
+
+"""
+    cross_wignerchar(state1::GaussianState, state2::GaussianState, xi::AbstractVector)
+
+Compute cross-Wigner characteristic function between two Gaussian states.
+"""
+function cross_wignerchar(state1::GaussianState, state2::GaussianState, xi::AbstractVector)
+    state1.basis == state2.basis || throw(ArgumentError(SYMPLECTIC_ERROR))
+    state1.ħ == state2.ħ || throw(ArgumentError(HBAR_ERROR))
+    length(xi) == length(state1.mean) || throw(ArgumentError(WIGNER_ERROR))
+    
+    # Calculate cross-Wigner characteristic function
+    μ1, μ2 = state1.mean, state2.mean
+    V1, V2 = state1.covar, state2.covar
+    
+    μ12 = (μ1 + μ2) / 2
+    V12 = (V1 + V2) / 2
+    
+    Omega = symplecticform(state1.basis)
+    
+    arg1 = -0.5 * dot(xi, (Omega * V12 * transpose(Omega)) * xi)
+    arg2 = 1im * dot(Omega * μ12, xi)
+    
+    return exp(arg1 + arg2)
+end
+
+"""
+    wignerchar(lc::GaussianLinearCombination, xi::AbstractVector)
+
+Compute Wigner characteristic function of a linear combination including interference.
+"""
+function wignerchar(lc::GaussianLinearCombination, xi::AbstractVector)
+    length(xi) == length(lc.states[1].mean) || throw(ArgumentError(WIGNER_ERROR))
+    
+    result = 0.0 + 0.0im
+    
+    # Diagonal terms: Σᵢ |cᵢ|² χᵢ(xi)
+    for (c, state) in lc
+        result += abs2(c) * wignerchar(state, xi)
+    end
+    
+    # Cross terms: 2 Σᵢ<ⱼ Re(cᵢ*cⱼ χ_cross(ψᵢ,ψⱼ,xi))
+    for i in 1:length(lc)
+        ci, si = lc[i]
+        for j in (i+1):length(lc)
+            cj, sj = lc[j]
+            cross_term = 2 * real(conj(ci) * cj * cross_wignerchar(si, sj, xi))
+            result += cross_term
+        end
+    end
+    
+    return result
+end
+
+## Advanced State Metrics
+
+"""
+    purity(lc::GaussianLinearCombination)
+
+Calculate purity of a linear combination: Tr(ρ²).
+For a properly normalized linear combination, this should be ≤ 1.
+"""
+function purity(lc::GaussianLinearCombination)
+    # First normalize the coefficients to get proper quantum state
+    total_norm = sqrt(sum(abs2, lc.coefficients))
+    if total_norm < 1e-15
+        return 0.0
+    end
+    
+    normalized_coeffs = lc.coefficients ./ total_norm
+    
+    result = 0.0
+    
+    # Tr(ρ²) = Σᵢⱼ cᵢ*cⱼ ⟨ψᵢ|ψⱼ⟩
+    for i in 1:length(lc)
+        ci = normalized_coeffs[i]
+        si = lc.states[i]
+        for j in 1:length(lc)
+            cj = normalized_coeffs[j]
+            sj = lc.states[j]
+            overlap = _gaussian_overlap(si, sj)
+            result += real(conj(ci) * cj * overlap)
+        end
+    end
+    
+    # Ensure result ∈ [0,1]
+    return clamp(result, 0.0, 1.0)
+end
+
+"""
+    entropy_vn(lc::GaussianLinearCombination)
+
+Calculate Von Neumann entropy of a linear combination.
+COMPLETE implementation constructing full density matrix and diagonalizing.
+"""
+function entropy_vn(lc::GaussianLinearCombination)
+    n = length(lc)
+    
+    if n == 1
+        # Single state - entropy is 0 for a pure state
+        return 0.0
+    end
+    
+    # Normalize coefficients first
+    total_norm = sqrt(sum(abs2, lc.coefficients))
+    if total_norm < 1e-15
+        return 0.0
+    end
+    normalized_coeffs = lc.coefficients ./ total_norm
+    
+    # For very large combinations: use approximation with warning
+    if n > 100
+        @warn "Using approximation for entropy calculation due to large number of terms ($(n)). " *
+              "Result may not be exact for strongly interfering states."
+        
+        # Shannon entropy of coefficients (classical mixture approximation)
+        entropy = 0.0
+        
+        for c in normalized_coeffs
+            weight = abs2(c)
+            if weight > 1e-15
+                entropy -= weight * log(weight)
+            end
+        end
+        
+        return entropy
+    end
+    
+    # COMPLETE implementation: construct full density matrix and diagonalize
+    # Build density matrix ρᵢⱼ = cᵢ* cⱼ ⟨ψᵢ|ψⱼ⟩
+    ρ = Matrix{ComplexF64}(undef, n, n)
+    for i in 1:n
+        ci = normalized_coeffs[i]
+        si = lc.states[i]
+        for j in 1:n
+            cj = normalized_coeffs[j]
+            sj = lc.states[j]
+            overlap = _gaussian_overlap(si, sj)
+            ρ[i, j] = conj(ci) * cj * overlap
+        end
+    end
+    
+    # Find eigenvalues λₖ of ρ
+    eigenvals = real(eigvals(Hermitian(ρ)))
+    
+    # Handle numerical stability for near-zero eigenvalues
+    eigenvals = eigenvals[eigenvals .> 1e-15]  # Remove numerical zeros
+    total = sum(eigenvals)
+    if total > 1e-15
+        eigenvals ./= total  # Normalize to ensure unit trace
+    end
+    
+    # S = -Σₖ λₖ log λₖ (handle λₖ=0 case)
+    entropy = 0.0
+    for λ in eigenvals
+        if λ > 1e-15  # Numerical stability check for near-zero eigenvalues
+            entropy -= λ * log(λ)
+        end
+    end
+    
+    return max(entropy, 0.0)  # Ensure non-negative
+end
+
+## Measurement Theory
+
+"""
+    measurement_probability(lc::GaussianLinearCombination, measurement::GaussianState, indices)
+
+Calculate measurement probability using Born rule: P = |⟨measurement|Tr_complement(lc)⟩|².
+"""
+function measurement_probability(lc::GaussianLinearCombination, measurement::GaussianState, indices::Union{Int, AbstractVector{<:Int}})
+    indices_vec = indices isa Int ? [indices] : collect(indices)
+    
+    # Check that measurement state has the right number of modes
+    expected_modes = length(indices_vec)
+    measurement.basis.nmodes == expected_modes || throw(ArgumentError(GENERALDYNE_ERROR))
+    
+    # Check ħ compatibility
+    lc.ħ == measurement.ħ || throw(ArgumentError(HBAR_ERROR))
+    
+    # Normalize the linear combination first
+    total_norm = sqrt(sum(abs2, lc.coefficients))
+    if total_norm < 1e-15
+        return 0.0
+    end
+    normalized_coeffs = lc.coefficients ./ total_norm
+    
+    # Get the complement indices (modes to trace out)
+    complement_indices = setdiff(1:lc.basis.nmodes, indices_vec)
+    
+    # Partial trace over complement to get the measured subsystem
+    if isempty(complement_indices)
+        # No partial trace needed - measuring the entire system
+        lc_measured_states = lc.states
+        lc_measured_coeffs = normalized_coeffs
+    else
+        # Apply partial trace to each state
+        lc_measured_states = [ptrace(state, complement_indices) for state in lc.states]
+        lc_measured_coeffs = normalized_coeffs
+    end
+    
+    # Calculate overlap with measurement state including all cross-terms
+    overlap = 0.0 + 0.0im
+    for i in 1:length(lc_measured_states)
+        c = lc_measured_coeffs[i]
+        state = lc_measured_states[i]
+        state_overlap = _gaussian_overlap(measurement, state)
+        overlap += c * state_overlap
+    end
+    
+    # Born rule: probability is |⟨measurement|state⟩|²
+    return abs2(overlap)
+end
