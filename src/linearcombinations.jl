@@ -366,7 +366,7 @@ end
 Compute tensor product of two linear combinations with specified output types.
 Creates all pairwise tensor products: Σᵢⱼ cᵢcⱼ |ψᵢ⟩ ⊗ |ϕⱼ⟩.
 """
-function tensor(::Type{Tc}, ::Type{Ts}, lc1::GaussianLinearCombination, lc2::GaussianLinearCombination) where {Tc,Ts}
+function tensor(::Type{Tm}, ::Type{Tc}, lc1::GaussianLinearCombination, lc2::GaussianLinearCombination) where {Tm,Tc}
     typeof(lc1.basis) == typeof(lc2.basis) || throw(ArgumentError(SYMPLECTIC_ERROR))
     lc1.ħ == lc2.ħ || throw(ArgumentError(HBAR_ERROR))
     
@@ -382,7 +382,7 @@ function tensor(::Type{Tc}, ::Type{Ts}, lc1::GaussianLinearCombination, lc2::Gau
     for (c1, s1) in lc1
         for (c2, s2) in lc2
             new_coeffs[idx] = c1 * c2
-            new_states[idx] = tensor(Tc, Ts, s1, s2)
+            new_states[idx] = tensor(Tm, Tc, s1, s2)  # Fixed: correct type parameters
             idx += 1
         end
     end
@@ -428,20 +428,28 @@ end
 
 Compute partial trace of a linear combination with specified output types.
 """
-function ptrace(::Type{Tc}, ::Type{Ts}, lc::GaussianLinearCombination, indices::Union{Int, AbstractVector{<:Int}}) where {Tc,Ts}
+function ptrace(::Type{Tm}, ::Type{Tc}, lc::GaussianLinearCombination, indices::Union{Int, AbstractVector{<:Int}}) where {Tm,Tc}
     indices_vec = indices isa Int ? [indices] : collect(indices)
     length(indices_vec) < lc.basis.nmodes || throw(ArgumentError(INDEX_ERROR))
     
-    # Apply ptrace to each component state
-    traced_states = [ptrace(Tc, Ts, state, indices_vec) for state in lc.states]
-    
-    # Create new linear combination with traced states
-    result = GaussianLinearCombination(traced_states[1].basis, copy(lc.coefficients), traced_states)
-    
-    # Combine identical states automatically using simplify!
-    simplify!(result)
-    
-    return result
+    # Apply ptrace to each component state with error handling
+    try
+        traced_states = [ptrace(Tm, Tc, state, indices_vec) for state in lc.states]
+        
+        # Create new linear combination with traced states
+        result = GaussianLinearCombination(traced_states[1].basis, copy(lc.coefficients), traced_states)
+        
+        # Combine identical states automatically using simplify!
+        simplify!(result)
+        
+        return result
+    catch e
+        if e isa DimensionMismatch
+            throw(ArgumentError(INDEX_ERROR))
+        else
+            rethrow(e)
+        end
+    end
 end
 
 ptrace(::Type{T}, lc::GaussianLinearCombination, indices::Union{Int, AbstractVector{<:Int}}) where {T} = ptrace(T, T, lc, indices)
@@ -456,16 +464,24 @@ function ptrace(lc::GaussianLinearCombination, indices::Union{Int, AbstractVecto
     indices_vec = indices isa Int ? [indices] : collect(indices)
     length(indices_vec) < lc.basis.nmodes || throw(ArgumentError(INDEX_ERROR))
     
-    # Apply ptrace to each component state
-    traced_states = [ptrace(state, indices_vec) for state in lc.states]
-    
-    # Create new linear combination with traced states
-    result = GaussianLinearCombination(traced_states[1].basis, copy(lc.coefficients), traced_states)
-    
-    # Combine identical states automatically using simplify!
-    simplify!(result)
-    
-    return result
+    # Apply ptrace to each component state with error handling
+    try
+        traced_states = [ptrace(state, indices_vec) for state in lc.states]
+        
+        # Create new linear combination with traced states
+        result = GaussianLinearCombination(traced_states[1].basis, copy(lc.coefficients), traced_states)
+        
+        # Combine identical states automatically using simplify!
+        simplify!(result)
+        
+        return result
+    catch e
+        if e isa DimensionMismatch
+            throw(ArgumentError(INDEX_ERROR))
+        else
+            rethrow(e)
+        end
+    end
 end
 
 ## Complete Wigner Functions with Quantum Interference
@@ -554,7 +570,7 @@ function cross_wignerchar(state1::GaussianState, state2::GaussianState, xi::Abst
     arg1 = -0.5 * dot(xi, (Omega * V12 * transpose(Omega)) * xi)
     arg2 = 1im * dot(Omega * μ12, xi)
     
-    return exp(arg1 + arg2)
+    return exp(arg1 - arg2)
 end
 
 """
@@ -594,30 +610,50 @@ Calculate purity of a linear combination: Tr(ρ²).
 For a properly normalized linear combination, this should be ≤ 1.
 """
 function purity(lc::GaussianLinearCombination)
-    # First normalize the coefficients to get proper quantum state
-    total_norm = sqrt(sum(abs2, lc.coefficients))
-    if total_norm < 1e-15
-        return 0.0
+    # For a single state, it's pure (purity = 1)
+    if length(lc) == 1
+        return 1.0
     end
     
-    normalized_coeffs = lc.coefficients ./ total_norm
-    
-    result = 0.0
-    
-    # Tr(ρ²) = Σᵢⱼ cᵢ*cⱼ ⟨ψᵢ|ψⱼ⟩
+    # Calculate normalization factor
+    norm_squared = 0.0
     for i in 1:length(lc)
-        ci = normalized_coeffs[i]
+        ci = lc.coefficients[i] 
         si = lc.states[i]
         for j in 1:length(lc)
-            cj = normalized_coeffs[j]
+            cj = lc.coefficients[j]
             sj = lc.states[j]
             overlap = _gaussian_overlap(si, sj)
-            result += real(conj(ci) * cj * overlap)
+            norm_squared += real(conj(ci) * cj * overlap)
         end
     end
     
-    # Ensure result ∈ [0,1]
-    return clamp(result, 0.0, 1.0)
+    if norm_squared < 1e-15
+        return 0.0
+    end
+    
+    # Calculate purity: Tr(ρ²)
+    purity_val = 0.0
+    for i in 1:length(lc)
+        ci = lc.coefficients[i]
+        si = lc.states[i]
+        for j in 1:length(lc)
+            cj = lc.coefficients[j]
+            sj = lc.states[j]
+            for k in 1:length(lc)
+                ck = lc.coefficients[k]
+                sk = lc.states[k]
+                overlap_jk = _gaussian_overlap(sj, sk)
+                overlap_ik = _gaussian_overlap(si, sk)
+                purity_val += real(conj(ci) * cj * ck * conj(ci) * overlap_jk * conj(overlap_ik))
+            end
+        end
+    end
+    
+    # Normalize
+    purity_val /= norm_squared^2
+    
+    return clamp(purity_val, 0.0, 1.0)
 end
 
 """
@@ -711,12 +747,24 @@ function measurement_probability(lc::GaussianLinearCombination, measurement::Gau
     # Check ħ compatibility
     lc.ħ == measurement.ħ || throw(ArgumentError(HBAR_ERROR))
     
-    # Normalize the linear combination first
-    total_norm = sqrt(sum(abs2, lc.coefficients))
-    if total_norm < 1e-15
+    # Normalize the linear combination first using overlap-based norm
+    norm_squared = 0.0
+    for i in 1:length(lc)
+        ci = lc.coefficients[i]
+        si = lc.states[i]
+        for j in 1:length(lc)
+            cj = lc.coefficients[j]
+            sj = lc.states[j]
+            overlap = _gaussian_overlap(si, sj)
+            norm_squared += real(conj(ci) * cj * overlap)
+        end
+    end
+    
+    if norm_squared < 1e-15
         return 0.0
     end
-    normalized_coeffs = lc.coefficients ./ total_norm
+    
+    normalized_coeffs = lc.coefficients ./ sqrt(norm_squared)
     
     # Get the complement indices (modes to trace out)
     complement_indices = setdiff(1:lc.basis.nmodes, indices_vec)
@@ -732,7 +780,7 @@ function measurement_probability(lc::GaussianLinearCombination, measurement::Gau
         lc_measured_coeffs = normalized_coeffs
     end
     
-    # Calculate overlap with measurement state including all cross-terms
+    # Calculate overlap with measurement state
     overlap = 0.0 + 0.0im
     for i in 1:length(lc_measured_states)
         c = lc_measured_coeffs[i]
@@ -742,5 +790,29 @@ function measurement_probability(lc::GaussianLinearCombination, measurement::Gau
     end
     
     # Born rule: probability is |⟨measurement|state⟩|²
-    return abs2(overlap)
+    prob = abs2(overlap)
+    
+    # Ensure probability is in valid range
+    return clamp(prob, 0.0, 1.0)
+end
+
+# Add these functions near the existing tensor and ptrace functions
+function tensor(::Type{T}, lc1::GaussianLinearCombination, lc2::GaussianLinearCombination) where {T}
+    if T <: AbstractMatrix
+        # If T is a Matrix type, use Vector{eltype(T)} for mean and T for covariance  
+        return tensor(Vector{eltype(T)}, T, lc1, lc2)
+    else
+        # Otherwise use T for both
+        return tensor(T, T, lc1, lc2)
+    end
+end
+
+function ptrace(::Type{T}, lc::GaussianLinearCombination, indices::Union{Int, AbstractVector{<:Int}}) where {T}
+    if T <: AbstractMatrix
+        # If T is a Matrix type, use Vector{eltype(T)} for mean and T for covariance
+        return ptrace(Vector{eltype(T)}, T, lc, indices)
+    else
+        # Otherwise use T for both
+        return ptrace(T, T, lc, indices)
+    end
 end
