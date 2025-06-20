@@ -329,6 +329,8 @@ function Base.isapprox(lc1::GaussianLinearCombination, lc2::GaussianLinearCombin
 end
 
 
+#phase 3 code from here:
+
 """
     *(op::GaussianUnitary, lcgs::GaussianLinearCombination)
 

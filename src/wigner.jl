@@ -36,7 +36,8 @@ function wignerchar(state::GaussianState, xi::T) where {T}
     return exp(arg1 .- arg2)
 end
 
-#phase 3 code(extensions):
+#phase 3 code from here:
+
 """
     cross_wigner(state1::GaussianState, state2::GaussianState, x::Vector)
 

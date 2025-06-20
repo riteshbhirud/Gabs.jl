@@ -1,4 +1,3 @@
-
 """
     purity(state::GaussianState)
 
@@ -141,7 +140,7 @@ function _tilde(state::GaussianState{B,M,V}, indices::Union{Integer, AbstractVec
     return T
 end
 
-
+#phase 3 code from here:
 
 """
     measurement_probability(lcgs::GaussianLinearCombination, measurement::GaussianState, indices)

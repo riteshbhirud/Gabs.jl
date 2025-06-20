@@ -736,7 +736,7 @@ function _sympspectrum(M::AbstractMatrix{<:Number}, select::Function; pre::Union
 end
 
 
-# Partial trace for linear combinations
+#phase 3 code from here:
 """
     ptrace(lcgs::GaussianLinearCombination, indices)
 
