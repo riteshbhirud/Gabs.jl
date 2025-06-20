@@ -1,3 +1,4 @@
+
 ##
 # Predefined Gaussian states
 ##
@@ -732,4 +733,61 @@ function _sympspectrum(M::AbstractMatrix{<:Number}, select::Function; pre::Union
     M = isnothing(post) ? M : M * post
     M = isnothing(invscale) ? imag.(eigvals(M)) : imag.(eigvals(M)) ./ invscale
     return filter(x -> select(x), M)
+end
+
+
+# Partial trace for linear combinations
+"""
+    ptrace(lcgs::GaussianLinearCombination, indices)
+
+Compute the partial trace of a linear combination over specified subsystem indices.
+Returns a new GaussianLinearCombination representing the reduced system.
+"""
+function ptrace(lcgs::GaussianLinearCombination, indices::T) where {T}
+    basis = lcgs.basis
+    length(indices) < basis.nmodes || throw(ArgumentError(INDEX_ERROR))
+    
+    new_basis = typeof(basis)(basis.nmodes - length(indices))
+    traced_states = [ptrace(state, indices) for state in lcgs.states]
+    
+    # Group identical states and sum their coefficients
+    unique_states = typeof(traced_states[1])[]
+    combined_coeffs = eltype(lcgs.coefficients)[]
+    
+    sizehint!(unique_states, length(traced_states))
+    sizehint!(combined_coeffs, length(traced_states))
+    
+    for (coeff, state) in zip(lcgs.coefficients, traced_states)
+        existing_idx = findfirst(s -> isapprox(s, state, atol=1e-12), unique_states)
+        
+        if existing_idx === nothing
+            push!(unique_states, state)
+            push!(combined_coeffs, coeff)
+        else
+            combined_coeffs[existing_idx] += coeff
+        end
+    end
+    
+    # Remove terms with negligible coefficients
+    significant_mask = abs.(combined_coeffs) .> 1e-14
+    if !any(significant_mask)
+        # If all coefficients are negligible, return zero state
+        vac = vacuumstate(new_basis, ħ = lcgs.ħ)
+        return GaussianLinearCombination(new_basis, [zero(eltype(combined_coeffs))], [vac])
+    end
+    
+    final_coeffs = combined_coeffs[significant_mask]
+    final_states = unique_states[significant_mask]
+    
+    return GaussianLinearCombination(new_basis, final_coeffs, final_states)
+end
+
+function ptrace(::Type{Tc}, ::Type{Ts}, lcgs::GaussianLinearCombination, indices::T) where {Tc,Ts,T}
+    result = ptrace(lcgs, indices)
+    new_coeffs = Tc <: Vector ? (Tc <: Vector{Float64} ? result.coefficients : Tc(result.coefficients)) : result.coefficients
+    return GaussianLinearCombination(result.basis, new_coeffs, result.states)
+end
+
+function ptrace(::Type{T}, lcgs::GaussianLinearCombination, indices) where {T}
+    return ptrace(T, T, lcgs, indices)
 end
