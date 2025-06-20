@@ -1,7 +1,7 @@
 module Gabs
 
 import LinearAlgebra
-using LinearAlgebra: I, det, mul!, diag, qr, eigvals, Diagonal, cholesky, Symmetric, dot
+using LinearAlgebra: I, det, mul!, diag, qr, eigvals, Diagonal, cholesky, Symmetric, dot,Hermitian
 
 import QuantumInterface: StateVector, AbstractOperator, apply!, tensor, ⊗, directsum, ⊕, entropy_vn, fidelity, logarithmic_negativity
 
@@ -37,7 +37,9 @@ export
     # factorizations
     williamson, Williamson, polar, Polar, blochmessiah, BlochMessiah,
     # metrics
-    purity, entropy_vn, fidelity, logarithmic_negativity
+    purity, entropy_vn, fidelity, logarithmic_negativity,
+    #newphase 3:
+    cross_wigner, measurement_probability
     
     # quck Note: Removed simplify! and normalize! from exports since they conflict with LinearAlgebra
     # These will be available as Gabs.simplify! and Gabs.normalize!
