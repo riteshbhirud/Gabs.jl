@@ -51,7 +51,6 @@ include("utils.jl")
 include("symplectic.jl")
 
 include("types.jl")
-include("linearcombinations.jl")
 
 include("states.jl")
 
@@ -71,7 +70,7 @@ include("wigner.jl")
 
 include("metrics.jl")
 
-
+include("linearcombinations.jl")
 
 include("nongaussian_states.jl")
 

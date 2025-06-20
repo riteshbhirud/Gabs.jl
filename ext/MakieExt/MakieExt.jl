@@ -18,7 +18,7 @@ function Makie.convert_arguments(P::Type{<:Makie.Heatmap}, q, p, state::Gaussian
     return convert_arguments(P, q, p, data)
 end
 
-end
+
 
 # Support for GaussianLinearCombination visualization (phase 3)
 
@@ -37,4 +37,6 @@ function Makie.convert_arguments(P::Type{<:Makie.Heatmap}, q, p, lcgs::GaussianL
     end
     
     return convert_arguments(P, q, p, data)
+end
+
 end

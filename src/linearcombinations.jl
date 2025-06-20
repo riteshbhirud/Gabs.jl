@@ -184,9 +184,7 @@ end
 function Base.:+(lc1::GaussianLinearCombination{B1}, lc2::GaussianLinearCombination{B2}) where {B1<:SymplecticBasis,B2<:SymplecticBasis}
     throw(ArgumentError(SYMPLECTIC_ERROR))
 end
-function Base.:-(lc1::GaussianLinearCombination{B1}, lc2::GaussianLinearCombination{B2}) where {B1<:SymplecticBasis,B2<:SymplecticBasis}
-    throw(ArgumentError(SYMPLECTIC_ERROR))
-end
+
 
 # Utility functions
 
@@ -327,86 +325,4 @@ function Base.isapprox(lc1::GaussianLinearCombination, lc2::GaussianLinearCombin
     return isapprox(lc1.coefficients, lc2.coefficients; kwargs...) && 
            all(isapprox(s1, s2; kwargs...) for (s1, s2) in zip(lc1.states, lc2.states))
 end
-
-
-#phase 3 code from here:
-
-"""
-    *(op::GaussianUnitary, lcgs::GaussianLinearCombination)
-
-Apply a Gaussian unitary operator to a linear combination of Gaussian states.
-Returns a new GaussianLinearCombination where the unitary is applied to each component state.
-"""
-function Base.:*(op::GaussianUnitary, lcgs::GaussianLinearCombination)
-    op.basis == lcgs.basis || throw(ArgumentError(SYMPLECTIC_ERROR))
-    op.ħ == lcgs.ħ || throw(ArgumentError(HBAR_ERROR))
-    
-    new_states = [op * state for state in lcgs.states]
-    return GaussianLinearCombination(lcgs.basis, copy(lcgs.coefficients), new_states)
-end
-
-# Gaussian channel action on linear combinations
-"""
-    *(op::GaussianChannel, lcgs::GaussianLinearCombination)
-
-Apply a Gaussian channel to a linear combination of Gaussian states.
-Returns a new GaussianLinearCombination where the channel is applied to each component state.
-"""
-function Base.:*(op::GaussianChannel, lcgs::GaussianLinearCombination)
-    op.basis == lcgs.basis || throw(ArgumentError(SYMPLECTIC_ERROR))
-    op.ħ == lcgs.ħ || throw(ArgumentError(HBAR_ERROR))
-    
-    new_states = [op * state for state in lcgs.states]
-    return GaussianLinearCombination(lcgs.basis, copy(lcgs.coefficients), new_states)
-end
-
-# Tensor products for linear combinations
-"""
-    tensor(lcgs1::GaussianLinearCombination, lcgs2::GaussianLinearCombination)
-
-Compute the tensor product of two linear combinations of Gaussian states.
-Returns a new GaussianLinearCombination with all pairwise tensor products.
-"""
-function tensor(lcgs1::GaussianLinearCombination{B}, lcgs2::GaussianLinearCombination{B}) where {B<:SymplecticBasis}
-    typeof(lcgs1.basis) == typeof(lcgs2.basis) || throw(ArgumentError(SYMPLECTIC_ERROR))
-    lcgs1.ħ == lcgs2.ħ || throw(ArgumentError(HBAR_ERROR))
-    
-    new_basis = lcgs1.basis ⊕ lcgs2.basis
-    
-    # Pre-allocate arrays for efficiency
-    result_size = length(lcgs1) * length(lcgs2)
-    CoeffType = promote_type(eltype(lcgs1.coefficients), eltype(lcgs2.coefficients))
-    new_coeffs = Vector{CoeffType}(undef, result_size)
-    new_states = Vector{GaussianState}(undef, result_size)
-    
-    idx = 1
-    for (c1, s1) in lcgs1
-        for (c2, s2) in lcgs2
-            new_coeffs[idx] = c1 * c2
-            new_states[idx] = s1 ⊗ s2
-            idx += 1
-        end
-    end
-    
-    return GaussianLinearCombination(new_basis, new_coeffs, new_states)
-end
-
-function tensor(::Type{Tc}, ::Type{Ts}, lcgs1::GaussianLinearCombination, lcgs2::GaussianLinearCombination) where {Tc,Ts}
-    result = tensor(lcgs1, lcgs2)
-    new_coeffs = Tc <: Vector ? (Tc <: Vector{Float64} ? result.coefficients : Tc(result.coefficients)) : result.coefficients
-    return GaussianLinearCombination(result.basis, new_coeffs, result.states)
-end
-
-function tensor(::Type{T}, lcgs1::GaussianLinearCombination, lcgs2::GaussianLinearCombination) where {T}
-    return tensor(T, T, lcgs1, lcgs2)
-end
-
-# Add tensor products for different basis types with proper error handling
-function tensor(lcgs1::GaussianLinearCombination{B1}, lcgs2::GaussianLinearCombination{B2}) where {B1<:SymplecticBasis,B2<:SymplecticBasis}
-    throw(ArgumentError(SYMPLECTIC_ERROR))
-end
-
-# Tensor product alias
-const ⊗ = tensor
-
 
