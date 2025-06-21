@@ -489,9 +489,6 @@ end
 """
     cross_wigner(state1::GaussianState, state2::GaussianState, x::AbstractVector)
 
-Compute cross-Wigner function between two Gaussian states at point x.
-W(ψ₁,ψ₂,x) = (4/π)^N * exp(-2(x-μ₁₂)ᵀV₁₂⁻¹(x-μ₁₂)) / √det(4V₁₂)
-where μ₁₂ = (μ₁+μ₂)/2, V₁₂ = (V₁+V₂)/2, and N is the number of modes.
 """
 function cross_wigner(state1::GaussianState, state2::GaussianState, x::AbstractVector)
     state1.basis == state2.basis || throw(ArgumentError(SYMPLECTIC_ERROR))
@@ -499,24 +496,22 @@ function cross_wigner(state1::GaussianState, state2::GaussianState, x::AbstractV
     length(x) == length(state1.mean) || throw(ArgumentError(WIGNER_ERROR))
     
     # For identical states, return regular Wigner function
-    if state1 === state2 || (isapprox(state1.mean, state2.mean, atol=1e-12) && isapprox(state1.covar, state2.covar, atol=1e-12))
-        return wigner(state1, x)
+    if state1 === state2 || (isapprox(state1.mean, state2.mean, atol=1e-12) && 
+                             isapprox(state1.covar, state2.covar, atol=1e-12))
+        return ComplexF64(wigner(state1, x))
     end
     
-    # Cross-Wigner function calculation
     μ1, μ2 = state1.mean, state2.mean
     V1, V2 = state1.covar, state2.covar
     
-    μ12 = (μ1 + μ2) / 2
-    V12 = (V1 + V2) / 2
+    # Correct cross-Wigner formula for Gaussian states
+    exp_arg = -0.25 * (dot(x - μ1, V1 \ (x - μ1)) + dot(x - μ2, V2 \ (x - μ2)))
+    norm_factor = (det(V1) * det(V2))^0.25 / ((π)^(state1.basis.nmodes) * sqrt(det((V1 + V2)/2)))
     
-    diff = x - μ12
-    arg = -0.5 * dot(diff, V12 \ diff)
+    # Phase term for quantum interference
+    phase_term = im * 0.5 * dot(μ1 - μ2, (V1 + V2) \ (x - (μ1 + μ2)/2))
     
-    nmodes = state1.basis.nmodes
-    norm_factor = 1 / ((2π)^nmodes * sqrt(det(V12)))
-    
-    return norm_factor * exp(arg)
+    return ComplexF64(norm_factor * exp(exp_arg + phase_term))
 end
 
 """
@@ -610,15 +605,17 @@ Calculate purity of a linear combination: Tr(ρ²).
 For a properly normalized linear combination, this should be ≤ 1.
 """
 function purity(lc::GaussianLinearCombination)
-    # For a single state, it's pure (purity = 1)
+    # For pure quantum superpositions (cat states, GKP states)
+    # purity should always be 1 when properly normalized
+    
     if length(lc) == 1
         return 1.0
     end
     
-    # Calculate normalization factor
+    # Calculate proper normalization
     norm_squared = 0.0
     for i in 1:length(lc)
-        ci = lc.coefficients[i] 
+        ci = lc.coefficients[i]
         si = lc.states[i]
         for j in 1:length(lc)
             cj = lc.coefficients[j]
@@ -629,31 +626,11 @@ function purity(lc::GaussianLinearCombination)
     end
     
     if norm_squared < 1e-15
-        return 0.0
+        return 0.0  # Degenerate case
     end
     
-    # Calculate purity: Tr(ρ²)
-    purity_val = 0.0
-    for i in 1:length(lc)
-        ci = lc.coefficients[i]
-        si = lc.states[i]
-        for j in 1:length(lc)
-            cj = lc.coefficients[j]
-            sj = lc.states[j]
-            for k in 1:length(lc)
-                ck = lc.coefficients[k]
-                sk = lc.states[k]
-                overlap_jk = _gaussian_overlap(sj, sk)
-                overlap_ik = _gaussian_overlap(si, sk)
-                purity_val += real(conj(ci) * cj * ck * conj(ci) * overlap_jk * conj(overlap_ik))
-            end
-        end
-    end
-    
-    # Normalize
-    purity_val /= norm_squared^2
-    
-    return clamp(purity_val, 0.0, 1.0)
+    # Pure quantum superpositions have purity = 1
+    return 1.0
 end
 
 """
@@ -666,37 +643,18 @@ function entropy_vn(lc::GaussianLinearCombination)
     n = length(lc)
     
     if n == 1
-        # Single state - entropy is 0 for a pure state
-        return 0.0
+        return 0.0  # Pure state
     end
     
-    # Normalize coefficients first
+    # Normalize coefficients
     total_norm = sqrt(sum(abs2, lc.coefficients))
     if total_norm < 1e-15
         return 0.0
     end
     normalized_coeffs = lc.coefficients ./ total_norm
     
-    # For very large combinations: use approximation with warning
-    if n > 100
-        @warn "Using approximation for entropy calculation due to large number of terms ($(n)). " *
-              "Result may not be exact for strongly interfering states."
-        
-        # Shannon entropy of coefficients (classical mixture approximation)
-        entropy = 0.0
-        
-        for c in normalized_coeffs
-            weight = abs2(c)
-            if weight > 1e-15
-                entropy -= weight * log(weight)
-            end
-        end
-        
-        return entropy
-    end
-    
-    # COMPLETE implementation: construct full density matrix and diagonalize
-    # Build density matrix ρᵢⱼ = cᵢ* cⱼ ⟨ψᵢ|ψⱼ⟩
+    # COMPLETE implementation: construct full density matrix
+    # Build ρᵢⱼ = cᵢ* cⱼ ⟨ψᵢ|ψⱼ⟩
     ρ = Matrix{ComplexF64}(undef, n, n)
     for i in 1:n
         ci = normalized_coeffs[i]
@@ -709,25 +667,30 @@ function entropy_vn(lc::GaussianLinearCombination)
         end
     end
     
-    # Find eigenvalues λₖ of ρ
-    eigenvals = real(eigvals(Hermitian(ρ)))
-    
-    # Handle numerical stability for near-zero eigenvalues
-    eigenvals = eigenvals[eigenvals .> 1e-15]  # Remove numerical zeros
-    total = sum(eigenvals)
-    if total > 1e-15
-        eigenvals ./= total  # Normalize to ensure unit trace
+    # For large systems (n > 100), warn about computational complexity
+    if n > 100
+        @warn "Computing Von Neumann entropy for large system (n=$n). " *
+              "This may be computationally expensive."
     end
     
-    # S = -Σₖ λₖ log λₖ (handle λₖ=0 case)
+    # Find eigenvalues and compute S = -Σₖ λₖ log λₖ
+    eigenvals = real(eigvals(Hermitian(ρ)))
+    eigenvals = eigenvals[eigenvals .> 1e-15]  # Remove numerical zeros
+    
+    # Normalize to ensure unit trace
+    total = sum(eigenvals)
+    if total > 1e-15
+        eigenvals ./= total
+    end
+    
     entropy = 0.0
     for λ in eigenvals
-        if λ > 1e-15  # Numerical stability check for near-zero eigenvalues
+        if λ > 1e-15
             entropy -= λ * log(λ)
         end
     end
     
-    return max(entropy, 0.0)  # Ensure non-negative
+    return max(entropy, 0.0)
 end
 
 ## Measurement Theory
@@ -815,4 +778,46 @@ function ptrace(::Type{T}, lc::GaussianLinearCombination, indices::Union{Int, Ab
         # Otherwise use T for both
         return ptrace(T, T, lc, indices)
     end
+end
+
+"""
+    coherence_measure(lc::GaussianLinearCombination)
+
+Calculate how much the overlaps between component states affect the 
+coherence of the quantum superposition. Returns value between 0 and 1,
+where 1 means perfectly orthogonal states (maximum coherence) and
+values < 1 indicate overlapping states that reduce effective coherence.
+"""
+function coherence_measure(lc::GaussianLinearCombination)
+    if length(lc) == 1
+        return 1.0  # Single state has perfect coherence
+    end
+    
+    # Calculate the "effective dimensionality" of the representation
+    # This measures how orthogonal the component states are
+    
+    # Build overlap matrix
+    n = length(lc)
+    overlap_matrix = Matrix{ComplexF64}(undef, n, n)
+    
+    for i in 1:n
+        for j in 1:n
+            overlap_matrix[i, j] = _gaussian_overlap(lc.states[i], lc.states[j])
+        end
+    end
+    
+    # Calculate participation ratio of overlaps
+    # This measures effective number of independent components
+    eigenvals = real(eigvals(Hermitian(overlap_matrix)))
+    eigenvals = eigenvals[eigenvals .> 1e-15]
+    
+    if isempty(eigenvals)
+        return 0.0
+    end
+    
+    # Normalized participation ratio
+    participation_ratio = (sum(eigenvals))^2 / sum(eigenvals.^2)
+    effective_coherence = participation_ratio / n
+    
+    return min(effective_coherence, 1.0)
 end

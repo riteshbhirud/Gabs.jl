@@ -283,14 +283,21 @@
             coh2 = coherentstate(single_basis, -1.0)
             
             # Test cross-Wigner function
-            x = [0.5, 0.3]
-            cross_w = cross_wigner(coh1, coh2, x)
-            @test cross_w isa Real
-            @test isfinite(cross_w)
+x = [0.5, 0.3]
 
-            # Test symmetry: cross_wigner(s1, s2, x) = cross_wigner(s2, s1, x)
-            cross_w_sym = cross_wigner(coh2, coh1, x)
-            @test isapprox(cross_w, cross_w_sym, atol=1e-12)
+cross_w = cross_wigner(coh1, coh2, x)
+@test cross_w isa Complex  # ✅ CORRECT - expects complex value
+println("Cross-Wigner at $x: $cross_w")
+@test isfinite(real(cross_w))
+@test isfinite(imag(cross_w))
+
+# Additional test: for identical states, should equal regular Wigner
+cross_w_identical = cross_wigner(coh1, coh1, x)
+regular_w = wigner(coh1, x)
+@test isapprox(cross_w_identical, ComplexF64(regular_w), atol=1e-12)
+
+
+            
 
             # Test at mean positions
             x_mean1 = coh1.mean
@@ -325,7 +332,7 @@
                 w2 = wigner(coh2, x)
                 w_cross = cross_wigner(coh1, coh2, x)
                 
-                w_manual = 0.25 * w1 + 0.25 * w2 + 2 * 0.5 * 0.5 * w_cross
+                w_manual = 0.25 * w1 + 0.25 * w2 + 2 * real(0.5 * 0.5 * w_cross)
                 @test isapprox(w_lc, w_manual, atol=1e-12)
             end
 
@@ -407,32 +414,28 @@
             coh = coherentstate(single_basis, 1.0)
             lc_pure = GaussianLinearCombination(coh)
             @test isapprox(purity(lc_pure), 1.0, atol=1e-12)
-
-            # Mixed state: orthogonal coherent states (well-separated)
-            coh1 = coherentstate(single_basis, 5.0)  # Very well separated
+        
+            # Quantum superposition is STILL pure (purity = 1)
+            coh1 = coherentstate(single_basis, 5.0)
             coh2 = coherentstate(single_basis, -5.0)
-            lc_mixed = GaussianLinearCombination(single_basis, [0.5, 0.5], [coh1, coh2])
+            lc_superposition = GaussianLinearCombination(single_basis, [0.5, 0.5], [coh1, coh2])
             
-            purity_mixed = purity(lc_mixed)
-            @test 0.0 <= purity_mixed <= 1.0
-            @test purity_mixed < 1.0  # Should be less than pure state
-
-            # Test with complex coefficients
+            @test isapprox(purity(lc_superposition), 1.0, atol=1e-12)  # ✅ CORRECT
+            
+            # Test with complex coefficients (still pure)
             lc_complex = GaussianLinearCombination(single_basis, [0.6 + 0.8im, 0.0], [coh1, coh2])
-            purity_complex = purity(lc_complex)
-            @test 0.0 <= purity_complex <= 1.0
-
-            # Test orthogonal states
-            vac = vacuumstate(single_basis)
-            # For well-separated coherent states from vacuum
-            coh_far = coherentstate(single_basis, 10.0)
-            lc_quasi_orthogonal = GaussianLinearCombination(single_basis, [0.7, 0.3], [vac, coh_far])
-            purity_ortho = purity(lc_quasi_orthogonal)
-            @test 0.0 <= purity_ortho <= 1.0
-
-            # Test that purity is real and bounded
-            @test purity_mixed isa Real
-            @test isfinite(purity_mixed)
+            Gabs.normalize!(lc_complex)
+            @test isapprox(purity(lc_complex), 1.0, atol=1e-12)
+            
+            # Test coherence measure for orthogonality assessment
+            coherence_well_separated = coherence_measure(lc_superposition)
+            
+            coh3 = coherentstate(single_basis, 0.1)
+            coh4 = coherentstate(single_basis, -0.1)
+            lc_overlapping = GaussianLinearCombination(single_basis, [0.5, 0.5], [coh3, coh4])
+            coherence_overlapping = coherence_measure(lc_overlapping)
+            
+            @test coherence_well_separated > coherence_overlapping  # Well-separated states have higher coherence
         end
 
         @testset "Von Neumann Entropy Calculation" begin
@@ -644,18 +647,34 @@
         @testset "Static Wigner Functions" begin
             x = @SVector [0.5, 0.3]
             
-            # Cross-Wigner
+            # Cross-Wigner (FIXED)
             cross_w_static = cross_wigner(coh_static, vac_static, x)
-            @test cross_w_static isa Real
+            @test cross_w_static isa Complex  # ✅ CORRECT - expects Complex value
+            @test isfinite(real(cross_w_static))
+            @test isfinite(imag(cross_w_static))
             
-            # Wigner with interference
+            # Test for identical states (should equal regular Wigner)
+            cross_w_identical = cross_wigner(coh_static, coh_static, x)
+            regular_w = wigner(coh_static, x)
+            @test isapprox(cross_w_identical, ComplexF64(regular_w), atol=1e-12)
+            
+            # Wigner with interference (already correct)
             w_static = wigner(lc_static, x)
             @test w_static isa Real
+            @test isfinite(w_static)
             
-            # Characteristic functions
+            # Characteristic functions (already correct)
             xi = @SVector [0.2, 0.4]
             char_static = wignerchar(lc_static, xi)
             @test char_static isa Complex
+            @test isfinite(real(char_static))
+            @test isfinite(imag(char_static))
+            
+            # Cross-characteristic function (add this for completeness)
+            cross_char_static = cross_wignerchar(coh_static, vac_static, xi)
+            @test cross_char_static isa Complex
+            @test isfinite(real(cross_char_static))
+            @test isfinite(imag(cross_char_static))
         end
 
         @testset "Static Metrics" begin

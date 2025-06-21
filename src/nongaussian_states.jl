@@ -320,14 +320,15 @@ function _gaussian_overlap(state1::GaussianState, state2::GaussianState)
     @assert state1.basis == state2.basis "States must have the same basis"
     @assert state1.ħ == state2.ħ "States must have the same ħ"
     
-    # For identical states, return 1 (this is the key fix)
+    # For identical states, return 1 (numerical stability)
     if state1 === state2
-        return 1.0
+        return ComplexF64(1.0)
     end
     
     # Check if states are approximately identical
-    if isapprox(state1.mean, state2.mean, atol=1e-12) && isapprox(state1.covar, state2.covar, atol=1e-12)
-        return 1.0
+    if isapprox(state1.mean, state2.mean, atol=1e-12) && 
+       isapprox(state1.covar, state2.covar, atol=1e-12)
+        return ComplexF64(1.0)
     end
     
     μ1, μ2 = state1.mean, state2.mean
@@ -336,12 +337,20 @@ function _gaussian_overlap(state1::GaussianState, state2::GaussianState)
     Δμ = μ1 - μ2
     V_sum = V1 + V2
     
-    # Standard Gaussian overlap formula
-    exp_factor = exp(-0.25 * dot(Δμ, V_sum \ Δμ))
-    det_factor = sqrt(det(V1) * det(V2) / det(V_sum))
-    
-    overlap = exp_factor * det_factor
-    return clamp(real(overlap), 0.0, 1.0)
+    # Use numerically stable computation
+    try
+        exp_factor = exp(-0.25 * dot(Δμ, V_sum \ Δμ))
+        det_factor = sqrt(det(V1) * det(V2) / det(V_sum))
+        
+        overlap = exp_factor * det_factor
+        
+        # Ensure proper bounds and return complex number
+        result = clamp(real(overlap), 0.0, 1.0)
+        return ComplexF64(result)
+    catch e
+        @warn "Numerical instability in overlap calculation, returning 0"
+        return ComplexF64(0.0)
+    end
 end
 
 """

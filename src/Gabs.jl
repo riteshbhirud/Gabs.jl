@@ -39,7 +39,7 @@ export
     # metrics
     purity, entropy_vn, fidelity, logarithmic_negativity,
     #newphase 3:
-    cross_wigner,cross_wignerchar, measurement_probability
+    cross_wigner,cross_wignerchar, measurement_probability, coherence_measure
     
     # quck Note: Removed simplify! and normalize! from exports since they conflict with LinearAlgebra
     # These will be available as Gabs.simplify! and Gabs.normalize!
