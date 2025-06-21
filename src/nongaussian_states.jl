@@ -309,12 +309,6 @@ end
     _gaussian_overlap(state1::GaussianState, state2::GaussianState)
 
 Calculate the overlap ⟨ψ₁|ψ₂⟩ between two Gaussian states.
-
-# Mathematical Description
-For Gaussian states with means μ₁, μ₂ and covariances V₁, V₂:
-⟨ψ₁|ψ₂⟩ = exp(-½(μ₁-μ₂)ᵀ(V₁+V₂)⁻¹(μ₁-μ₂)) / √(det(V₁+V₂)/√(det(V₁)det(V₂)))
-
-This formula assumes the same ħ for both states.
 """
 function _gaussian_overlap(state1::GaussianState, state2::GaussianState)
     @assert state1.basis == state2.basis "States must have the same basis"
@@ -345,8 +339,7 @@ function _gaussian_overlap(state1::GaussianState, state2::GaussianState)
         overlap = exp_factor * det_factor
         
         # Ensure proper bounds and return complex number
-        result = clamp(real(overlap), 0.0, 1.0)
-        return ComplexF64(result)
+        return ComplexF64(overlap)
     catch e
         @warn "Numerical instability in overlap calculation, returning 0"
         return ComplexF64(0.0)

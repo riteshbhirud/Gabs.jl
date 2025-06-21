@@ -490,6 +490,28 @@ end
     cross_wigner(state1::GaussianState, state2::GaussianState, x::AbstractVector)
 
 """
+
+#=note:
+# Optional High-Precision Method (:fft, not implemented here)
+A more accurate formulation would derive `cross_wigner` from the Fourier transform of the
+cross-Wigner characteristic function `χ₁₂(ξ)`:
+
+    W₁₂(x) = (1 / (2π)^{2n}) ∫ χ₁₂(ξ) ⋅ exp(-i ξᵀ Ω x) dξ
+
+This yields an exact solution for all Gaussian states and precisely preserves phase information.
+It would be useful for:
+
+- High-fidelity benchmarks
+- Deep squeezing regimes
+- Comparing against symbolic solutions
+
+However, it has drawbacks:
+- Requires multidimensional numerical integration (scales poorly with mode count)
+- Not GPU-accelerated
+- Slower than the default method
+
+I think the  current implementation is correct and sufficient for this project’s goals. The high-precision
+form can be optionally added later as a separate method (e.g., `method = :fft`) if needed. check???=#
 function cross_wigner(state1::GaussianState, state2::GaussianState, x::AbstractVector)
     state1.basis == state2.basis || throw(ArgumentError(SYMPLECTIC_ERROR))
     state1.ħ == state2.ħ || throw(ArgumentError(HBAR_ERROR))
@@ -601,36 +623,69 @@ end
 """
     purity(lc::GaussianLinearCombination)
 
-Calculate purity of a linear combination: Tr(ρ²).
-For a properly normalized linear combination, this should be ≤ 1.
+Calculate the purity Tr(ρ²) of a linear combination of Gaussian states.
+
+For a pure quantum state |ψ⟩ = Σᵢ cᵢ|ψᵢ⟩, this computes the exact purity using:
+Tr(ρ²) = Tr((|ψ⟩⟨ψ|)²) / (⟨ψ|ψ⟩)² where ⟨ψ|ψ⟩ is the normalization. ???
 """
 function purity(lc::GaussianLinearCombination)
-    # For pure quantum superpositions (cat states, GKP states)
-    # purity should always be 1 when properly normalized
+    n = length(lc)
     
-    if length(lc) == 1
+    # Single state case - trivially pure
+    if n == 1
         return 1.0
     end
     
-    # Calculate proper normalization
-    norm_squared = 0.0
-    for i in 1:length(lc)
+    # Computing ⟨ψ|ψ⟩ = Σᵢⱼ c*ᵢcⱼ⟨ψᵢ|ψⱼ⟩
+    norm_squared = complex(0.0)
+    for i in 1:n
         ci = lc.coefficients[i]
-        si = lc.states[i]
-        for j in 1:length(lc)
-            cj = lc.coefficients[j]
-            sj = lc.states[j]
-            overlap = _gaussian_overlap(si, sj)
-            norm_squared += real(conj(ci) * cj * overlap)
+        state_i = lc.states[i]
+        for j in 1:n
+            cj = lc.coefficients[j] 
+            state_j = lc.states[j]
+            overlap_ij = _gaussian_overlap(state_i, state_j)
+            norm_squared += conj(ci) * cj * overlap_ij
         end
     end
     
-    if norm_squared < 1e-15
-        return 0.0  # Degenerate case
+    norm_real = real(norm_squared)
+    
+    # Degenerate case
+    if norm_real < 1e-15
+        return 0.0
     end
     
-    # Pure quantum superpositions have purity = 1
-    return 1.0
+    # Compute Tr(ρ²) = Tr((|ψ⟩⟨ψ|)²) / (⟨ψ|ψ⟩)²
+    # This equals: (Σᵢⱼₖₗ c*ᵢcⱼc*ₖcₗ⟨ψᵢ|ψₖ⟩⟨ψₗ|ψⱼ⟩) / (⟨ψ|ψ⟩)²
+    tr_rho_squared = complex(0.0)
+    for i in 1:n
+        ci = lc.coefficients[i]
+        state_i = lc.states[i]
+        for j in 1:n
+            cj = lc.coefficients[j]
+            state_j = lc.states[j]
+            for k in 1:n
+                ck = lc.coefficients[k]
+                state_k = lc.states[k]
+                for l in 1:n
+                    cl = lc.coefficients[l]
+                    state_l = lc.states[l]
+                    
+                    overlap_ik = _gaussian_overlap(state_i, state_k)
+                    overlap_lj = _gaussian_overlap(state_l, state_j)
+                    
+                    tr_rho_squared += conj(ci) * cj * conj(ck) * cl * overlap_ik * overlap_lj
+                end
+            end
+        end
+    end
+    
+    # Final purity: Tr(ρ²) normalized by (⟨ψ|ψ⟩)²
+    purity_value = real(tr_rho_squared) / abs2(norm_squared)
+    
+    # Clamp to valid range [0,1] accounting for numerical errors
+    return clamp(purity_value, 0.0, 1.0)
 end
 
 """
