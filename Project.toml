@@ -10,14 +10,17 @@ Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 SymplecticFactorizations = "7425e8e4-4cde-4e45-9b2f-a15679260f9b"
 
 [weakdeps]
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [extensions]
+CUDAExt = "CUDA"
 MakieExt = "Makie"
 StaticArraysExt = "StaticArrays"
 
 [compat]
+CUDA = "5"
 LinearAlgebra = "1.9"
 Makie = "0.21, 0.22, 0.23, 0.24"
 QuantumInterface = "0.3.7, 0.3.8, 0.4.1"
