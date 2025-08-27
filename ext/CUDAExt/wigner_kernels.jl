@@ -120,7 +120,7 @@ function Gabs.wigner(state::GaussianState{B,M,V}, x::AbstractVector) where {B<:S
     # Compute Wigner value
     result = exp(-0.5 * quad_form) / normalization
     
-    return Array(result)[1]  # Return scalar value
+    return result  # Return scalar value
 end
 
 # Batch Wigner function evaluation for GPU states
@@ -152,7 +152,7 @@ function Gabs.wigner(state::GaussianState{B,M,V}, x_points::CuMatrix{T}) where {
     
     # Launch kernel
     @cuda threads=threads_per_block blocks=num_blocks wigner_kernel!(
-        output, x_points, mean, covar_inv, Array(det_covar)[1], nmodes
+        output, x_points, mean, covar_inv, det_covar, nmodes
     )
     
     return output
@@ -196,7 +196,7 @@ function Gabs.wignerchar(state::GaussianState{B,M,V}, xi::AbstractVector) where 
     
     result = Complex{T}(cos(imag_part), sin(imag_part)) * exp(real_part)
     
-    return Array(result)[1]  # Return scalar value
+    return result  # Return scalar value
 end
 
 # Batch Wigner characteristic function evaluation for GPU states
@@ -219,7 +219,9 @@ function Gabs.wignerchar(state::GaussianState{B,M,V}, xi_points::CuMatrix{T}) wh
     
     # Prepare GPU arrays
     output = CUDA.zeros(Complex{T}, num_points)
-    omega = CuArray(symplecticform(basis))
+    
+    # FIXED: Ensure symplectic form has consistent type
+    omega = CuArray{T}(symplecticform(basis))  # Convert to Float32
     
     # Configure kernel launch parameters  
     threads_per_block = min(256, num_points)

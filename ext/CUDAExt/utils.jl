@@ -1,4 +1,5 @@
 # GPU Array promotion utilities
+import Gabs: _promote_output_vector, _promote_output_matrix
 
 Base.@propagate_inbounds function _promote_output_vector(::Type{T1}, ::Type{T2}, vec_out) where {T1<:CuVector, T2<:CuVector}
     return CuArray(vec_out)

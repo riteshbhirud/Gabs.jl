@@ -3,9 +3,6 @@
     using Gabs
     using LinearAlgebra
     
-    # Only run GPU tests if CUDA is available
-    if isdefined(Main, :CUDA) && Main.CUDA.functional()
-        using CUDA
         
         @testset "GPU Vacuum State" begin
             basis = QuadPairBasis(1)
@@ -63,7 +60,7 @@
         
         @testset "GPU Squeezed State" begin
             basis = QuadPairBasis(1)
-            r, θ = 0.3f0, π/4
+            r, θ = 0.3f0, Float32(π/4)
             
             # Create CPU version
             sq_cpu = squeezedstate(basis, r, θ)
@@ -82,7 +79,7 @@
             # Test vector parameters
             basis_multi = QuadPairBasis(2)
             r_vec = [0.3f0, 0.5f0]
-            θ_vec = [π/4, π/6]
+            θ_vec = [Float32(π/4), Float32(π/6)]
             
             sq_cpu_multi = squeezedstate(basis_multi, r_vec, θ_vec)
             sq_gpu_multi = squeezedstate(CuVector{Float32}, CuMatrix{Float32}, basis_multi, r_vec, θ_vec)
@@ -122,7 +119,7 @@
         
         @testset "GPU EPR State" begin
             basis = QuadPairBasis(2)
-            r, θ = 0.5f0, π/3
+            r, θ = 0.5f0, Float32(π/3)
             
             # Create CPU version
             epr_cpu = eprstate(basis, r, θ)
@@ -139,9 +136,7 @@
             @test Array(epr_gpu.covar) ≈ Float32.(epr_cpu.covar) rtol=1e-6
         end
         
-    else
-        @info "CUDA not available, skipping GPU state creation tests"
-    end
+ 
 end
 
 @testitem "GPU Foundation - Unitary Operations" begin
@@ -182,7 +177,7 @@ end
         
         @testset "GPU Squeeze" begin
             basis = QuadPairBasis(1)
-            r, θ = 0.3f0, π/4
+            r, θ = 0.3f0, Float32(π/4)
             
             # Create CPU and GPU versions
             squeeze_cpu = squeeze(basis, r, θ)
@@ -205,7 +200,7 @@ end
         
         @testset "GPU Phase Shift" begin
             basis = QuadPairBasis(1)
-            θ = π/3
+            θ = Float32(π/3)
             
             phase_cpu = phaseshift(basis, θ)
             phase_gpu = phaseshift(CuVector{Float32}, CuMatrix{Float32}, basis, θ)
@@ -227,7 +222,7 @@ end
         
         @testset "GPU Two-Mode Squeeze" begin
             basis = QuadPairBasis(2)
-            r, θ = 0.2f0, π/6
+            r, θ = 0.2f0, Float32(π/6)
             
             twosq_cpu = twosqueeze(basis, r, θ)
             twosq_gpu = twosqueeze(CuVector{Float32}, CuMatrix{Float32}, basis, r, θ)
@@ -250,7 +245,7 @@ end
         
         @testset "GPU Attenuator Channel" begin
             basis = QuadPairBasis(1)
-            θ, n = π/6, 2.0f0
+            θ, n = Float32(π/6), 2.0f0
             
             # Create CPU and GPU versions
             att_cpu = attenuator(basis, θ, n)
