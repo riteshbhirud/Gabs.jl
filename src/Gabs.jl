@@ -38,7 +38,9 @@ export
     williamson, Williamson, polar, Polar, blochmessiah, BlochMessiah,
     # metrics
     purity, entropy_vn, fidelity, logarithmic_negativity,
-    cross_wigner, cross_wignerchar
+    cross_wigner, cross_wignerchar,
+    #GPU Convenience Functions
+    gpu, cpu, device
 
 include("errors.jl")
 
@@ -70,4 +72,5 @@ include("linearcombinations.jl")
 
 include("nongaussian_states.jl")
 
+include("gpu_interface.jl")
 end
