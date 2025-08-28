@@ -1,84 +1,77 @@
-# Professional GPU API - replace src/gpu_convenience.jl with this
+# src/gpu_convenience.jl - Fixed Conditional GPU API
 
-# Device transfer functions (Flux.jl style)
 """
     gpu(x)
 
 Transfer data to GPU. Works with states, operators, and arrays.
-
-# Examples
-```julia
-state = vacuumstate(basis) |> gpu
-operator = displace(basis, 1.0) |> gpu
-basis = QuadPairBasis(1) |> gpu
-```
+Requires CUDA.jl to be loaded.
 """
 function gpu(state::GaussianState; precision=Float32)
-    gpu_mean = CuArray{precision}(state.mean)
-    gpu_covar = CuArray{precision}(state.covar)
-    return GaussianState(state.basis, gpu_mean, gpu_covar; ħ = state.ħ)
+    if !isdefined(Base, :get_extension) || isnothing(Base.get_extension(@__MODULE__, :CUDAExt))
+        error("GPU functionality requires CUDA.jl. Please run: using CUDA")
+    end
+    return _gpu_impl(state, precision)
 end
 
 function gpu(op::GaussianUnitary; precision=Float32)
-    gpu_disp = CuArray{precision}(op.disp)
-    gpu_symplectic = CuArray{precision}(op.symplectic)
-    return GaussianUnitary(op.basis, gpu_disp, gpu_symplectic; ħ = op.ħ)
+    if !isdefined(Base, :get_extension) || isnothing(Base.get_extension(@__MODULE__, :CUDAExt))
+        error("GPU functionality requires CUDA.jl. Please run: using CUDA")
+    end
+    return _gpu_impl(op, precision)
 end
 
 function gpu(op::GaussianChannel; precision=Float32)
-    gpu_disp = CuArray{precision}(op.disp)
-    gpu_transform = CuArray{precision}(op.transform)
-    gpu_noise = CuArray{precision}(op.noise)
-    return GaussianChannel(op.basis, gpu_disp, gpu_transform, gpu_noise; ħ = op.ħ)
+    if !isdefined(Base, :get_extension) || isnothing(Base.get_extension(@__MODULE__, :CUDAExt))
+        error("GPU functionality requires CUDA.jl. Please run: using CUDA")
+    end
+    return _gpu_impl(op, precision)
 end
 
 function gpu(lc::GaussianLinearCombination; precision=Float32)
-    gpu_coeffs = CuArray{precision}(lc.coeffs)
-    gpu_states = [gpu(state; precision=precision) for state in lc.states]
-    return GaussianLinearCombination(lc.basis, gpu_coeffs, gpu_states)
+    if !isdefined(Base, :get_extension) || isnothing(Base.get_extension(@__MODULE__, :CUDAExt))
+        error("GPU functionality requires CUDA.jl. Please run: using CUDA")
+    end
+    return _gpu_impl(lc, precision)
 end
 
+# FIX: Remove precision parameter from basis version
 function gpu(basis::SymplecticBasis)
-    # Mark basis as GPU-preferred (could store in basis metadata)
     return basis  # Basis itself doesn't need GPU arrays
 end
 
 function gpu(x::AbstractArray; precision=Float32)
-    return CuArray{precision}(x)
+    if !isdefined(Base, :get_extension) || isnothing(Base.get_extension(@__MODULE__, :CUDAExt))
+        error("GPU functionality requires CUDA.jl. Please run: using CUDA")
+    end
+    return _gpu_impl(x, precision)
 end
 
 """
     cpu(x)
 
 Transfer data to CPU. Works with states, operators, and arrays.
-
-# Examples  
-```julia
-state_cpu = gpu_state |> cpu
-operator_cpu = gpu_operator |> cpu
-```
 """
 function cpu(state::GaussianState)
-    cpu_mean = Array(state.mean)
-    cpu_covar = Array(state.covar)
+    cpu_mean = isa(state.mean, AbstractArray) ? Array(state.mean) : state.mean
+    cpu_covar = isa(state.covar, AbstractArray) ? Array(state.covar) : state.covar
     return GaussianState(state.basis, cpu_mean, cpu_covar; ħ = state.ħ)
 end
 
 function cpu(op::GaussianUnitary)
-    cpu_disp = Array(op.disp)
-    cpu_symplectic = Array(op.symplectic)
+    cpu_disp = isa(op.disp, AbstractArray) ? Array(op.disp) : op.disp
+    cpu_symplectic = isa(op.symplectic, AbstractArray) ? Array(op.symplectic) : op.symplectic
     return GaussianUnitary(op.basis, cpu_disp, cpu_symplectic; ħ = op.ħ)
 end
 
 function cpu(op::GaussianChannel)
-    cpu_disp = Array(op.disp)
-    cpu_transform = Array(op.transform)
-    cpu_noise = Array(op.noise)
+    cpu_disp = isa(op.disp, AbstractArray) ? Array(op.disp) : op.disp
+    cpu_transform = isa(op.transform, AbstractArray) ? Array(op.transform) : op.transform
+    cpu_noise = isa(op.noise, AbstractArray) ? Array(op.noise) : op.noise
     return GaussianChannel(op.basis, cpu_disp, cpu_transform, cpu_noise; ħ = op.ħ)
 end
 
 function cpu(lc::GaussianLinearCombination)
-    cpu_coeffs = Array(lc.coeffs)
+    cpu_coeffs = isa(lc.coeffs, AbstractArray) ? Array(lc.coeffs) : lc.coeffs
     cpu_states = [cpu(state) for state in lc.states]
     return GaussianLinearCombination(lc.basis, cpu_coeffs, cpu_states)
 end
@@ -87,77 +80,32 @@ function cpu(x::AbstractArray)
     return Array(x)
 end
 
-# Automatic dispatch based on input types
-"""
-Smart dispatch: automatically use GPU when inputs are GPU arrays.
-"""
-
-# States - automatic GPU detection
-function coherentstate(basis, α::CuArray; ħ=2)
-    T = real(eltype(α))
-    return coherentstate(CuVector{T}, CuMatrix{T}, basis, Array(α); ħ=ħ)
-end
-
-function squeezedstate(basis, r::CuArray, θ; ħ=2) 
-    T = eltype(r)
-    return squeezedstate(CuVector{T}, CuMatrix{T}, basis, Array(r), θ; ħ=ħ)
-end
-
-function thermalstate(basis, n::CuArray; ħ=2)
-    T = eltype(n)
-    return thermalstate(CuVector{T}, CuMatrix{T}, basis, Array(n); ħ=ħ)
-end
-
-# Operations - automatic GPU detection  
-function displace(basis, α::CuArray; ħ=2)
-    T = real(eltype(α))
-    return displace(CuVector{T}, CuMatrix{T}, basis, Array(α); ħ=ħ)
-end
-
-function squeeze(basis, r::CuArray, θ; ħ=2)
-    T = eltype(r) 
-    return squeeze(CuVector{T}, CuMatrix{T}, basis, Array(r), θ; ħ=ħ)
-end
-
-# Device detection helpers
 """
     device(x)
 
 Detect device of arrays/objects.
 """
-device(x::CuArray) = :gpu
 device(x::Array) = :cpu
-device(state::GaussianState) = device(state.mean)
-device(op::GaussianUnitary) = device(op.disp)
-device(op::GaussianChannel) = device(op.disp)
+device(state::GaussianState) = _detect_device(state.mean)
+device(op::GaussianUnitary) = _detect_device(op.disp)
+device(op::GaussianChannel) = _detect_device(op.disp)
+
+function _detect_device(x)
+    return :cpu  # Will be extended by CUDAExt for CuArrays
+end
 
 """
-    adapt_device(target, source)
+    adapt_device(target_constructor, source_obj, args...)
 
 Create target object on same device as source.
 """
 function adapt_device(target_constructor, source_obj, args...)
-    if device(source_obj) == :gpu
-        T = eltype(source_obj isa GaussianState ? source_obj.mean : 
-                  source_obj isa GaussianUnitary ? source_obj.disp : source_obj.disp)
-        precision = real(T)
-        return target_constructor(CuVector{precision}, CuMatrix{precision}, args...)
+    if _detect_device(source_obj) == :gpu
+        return _adapt_device_gpu(target_constructor, source_obj, args...)
     else
         return target_constructor(args...)
     end
 end
 
-# Mixed device operations - automatic promotion
-function Base.:*(op::GaussianUnitary, state::GaussianState)
-    # If devices don't match, promote to GPU
-    if device(op) != device(state)
-        if device(op) == :gpu
-            state = gpu(state)
-        elseif device(state) == :gpu  
-            op = gpu(op)
-        end
-    end
-    
-    # Use existing multiplication
-    return invoke(*, Tuple{GaussianUnitary, GaussianState}, op, state)
-end
+function _gpu_impl end
+function _adapt_device_gpu end

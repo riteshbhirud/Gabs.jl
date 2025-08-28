@@ -39,8 +39,8 @@ export
     # metrics
     purity, entropy_vn, fidelity, logarithmic_negativity,
     cross_wigner, cross_wignerchar,
-    #GPU Convenience Functions
-    gpu, cpu, device
+    
+    gpu, cpu, device, adapt_device
 
 include("errors.jl")
 
@@ -72,5 +72,5 @@ include("linearcombinations.jl")
 
 include("nongaussian_states.jl")
 
-include("gpu_interface.jl")
+include("gpu_convenience.jl")
 end
