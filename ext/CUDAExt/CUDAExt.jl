@@ -144,6 +144,28 @@ function Gabs.tensor(state1::GaussianState{B,M1,V1}, state2::GaussianState{B,M2,
     T = promote_type(eltype(M1), eltype(M2))
     return tensor(CuVector{T}, CuMatrix{T}, state1, state2)
 end
+
+function Gabs.tensor(::Type{T}, op1::GaussianUnitary{B,D1,S1}, op2::GaussianUnitary{B,D2,S2}) where {
+    T<:CuVector, B<:SymplecticBasis, D1<:CuArray, S1<:CuArray, D2<:CuArray, S2<:CuArray}
+    return tensor(T, CuMatrix{eltype(T)}, op1, op2)
+end
+
+function Gabs.tensor(op1::GaussianUnitary{B,D1,S1}, op2::GaussianUnitary{B,D2,S2}) where {
+    B<:SymplecticBasis, D1<:CuArray, S1<:CuArray, D2<:CuArray, S2<:CuArray}
+    T = promote_type(eltype(D1), eltype(D2))
+    return tensor(CuVector{T}, CuMatrix{T}, op1, op2)
+end
+
+function Gabs.tensor(::Type{T}, op1::GaussianChannel{B,D1,T1}, op2::GaussianChannel{B,D2,T2}) where {
+    T<:CuVector, B<:SymplecticBasis, D1<:CuArray, T1<:CuArray, D2<:CuArray, T2<:CuArray}
+    return tensor(T, CuMatrix{eltype(T)}, op1, op2)
+end
+
+function Gabs.tensor(op1::GaussianChannel{B,D1,T1}, op2::GaussianChannel{B,D2,T2}) where {
+    B<:SymplecticBasis, D1<:CuArray, T1<:CuArray, D2<:CuArray, T2<:CuArray}
+    T = promote_type(eltype(D1), eltype(D2))
+    return tensor(CuVector{T}, CuMatrix{T}, op1, op2)
+end
 include("utils.jl")
 include("state_operations.jl") 
 include("unitary_operations.jl")

@@ -1112,3 +1112,129 @@ end
     end
     
 end
+
+
+
+
+
+
+
+
+
+
+
+
+
+#tensor tests
+@testitem "GPU Tensor Products - Operators" begin
+    using CUDA
+    using Gabs
+    using Gabs: device
+    using LinearAlgebra
+    
+    @testset "GPU GaussianUnitary Tensor Products" begin
+        basis1 = QuadPairBasis(1)
+        basis2 = QuadPairBasis(1)
+        
+        # Create CPU operators
+        disp1_cpu = displace(basis1, 0.5f0)
+        disp2_cpu = displace(basis2, -0.3f0)
+        
+        # Create GPU operators using professional API  
+        disp1_gpu = disp1_cpu |> gpu
+        disp2_gpu = disp2_cpu |> gpu
+        
+        @test device(disp1_gpu) == :gpu
+        @test device(disp2_gpu) == :gpu
+        
+        # Test tensor product
+        tensor_gpu = tensor(disp1_gpu, disp2_gpu)
+        tensor_cpu = tensor(disp1_cpu, disp2_cpu)
+        
+        @test device(tensor_gpu) == :gpu
+        @test tensor_gpu.basis.nmodes == 2
+        @test Array(tensor_gpu.disp) ≈ Float32.(tensor_cpu.disp) rtol=1e-6
+        @test Array(tensor_gpu.symplectic) ≈ Float32.(tensor_cpu.symplectic) rtol=1e-6
+        
+        # Test typed version
+        tensor_typed = tensor(CuVector{Float64}, CuMatrix{Float64}, disp1_gpu, disp2_gpu)
+        @test eltype(tensor_typed.disp) == Float64
+        @test eltype(tensor_typed.symplectic) == Float64
+        
+        # Test application to states
+        vac1_gpu = vacuumstate(basis1) |> gpu
+        vac2_gpu = vacuumstate(basis2) |> gpu
+        tensor_state_gpu = tensor(vac1_gpu, vac2_gpu)
+        
+        result_gpu = tensor_gpu * tensor_state_gpu
+        
+        # Compare with CPU
+        vac1_cpu = vacuumstate(basis1)
+        vac2_cpu = vacuumstate(basis2)  
+        tensor_state_cpu = tensor(vac1_cpu, vac2_cpu)
+        result_cpu = tensor_cpu * tensor_state_cpu
+        
+        @test Array(result_gpu.mean) ≈ Float32.(result_cpu.mean) rtol=1e-5
+        @test Array(result_gpu.covar) ≈ Float32.(result_cpu.covar) rtol=1e-5
+    end
+    
+    @testset "GPU GaussianChannel Tensor Products" begin
+        basis1 = QuadPairBasis(1)
+        basis2 = QuadPairBasis(1)
+        
+        # Create CPU channels
+        att1_cpu = attenuator(basis1, π/6, 1.5)
+        att2_cpu = attenuator(basis2, π/4, 2.0)
+        
+        # Create GPU channels using professional API
+        att1_gpu = att1_cpu |> gpu
+        att2_gpu = att2_cpu |> gpu
+        
+        @test device(att1_gpu) == :gpu
+        @test device(att2_gpu) == :gpu
+        
+        # Test tensor product
+        tensor_gpu = tensor(att1_gpu, att2_gpu)
+        tensor_cpu = tensor(att1_cpu, att2_cpu)
+        
+        @test device(tensor_gpu) == :gpu
+        @test tensor_gpu.basis.nmodes == 2
+        @test Array(tensor_gpu.disp) ≈ Float32.(tensor_cpu.disp) rtol=1e-6
+        @test Array(tensor_gpu.transform) ≈ Float32.(tensor_cpu.transform) rtol=1e-5
+        @test Array(tensor_gpu.noise) ≈ Float32.(tensor_cpu.noise) rtol=1e-5
+        
+        # Test typed version
+        tensor_typed = tensor(CuVector{Float64}, CuMatrix{Float64}, att1_gpu, att2_gpu)
+        @test eltype(tensor_typed.disp) == Float64
+        @test eltype(tensor_typed.transform) == Float64
+        @test eltype(tensor_typed.noise) == Float64
+    end
+    
+    @testset "Mixed Operator Types" begin
+        basis = QuadPairBasis(1)
+        
+        # Test unitary ⊗ channel - should fail gracefully or work if implemented
+        disp_gpu = displace(basis, 1.0f0) |> gpu
+        att_gpu = attenuator(basis, π/4, 1.0) |> gpu
+        
+        # This should either work or give clear error
+        @test_throws ArgumentError tensor(disp_gpu, att_gpu)
+    end
+    
+    @testset "Error Handling" begin
+        basis1 = QuadPairBasis(1)  
+        basis2 = QuadBlockBasis(1)  # Different basis type
+        
+        disp1_gpu = displace(basis1, 1.0f0) |> gpu
+        disp2_gpu = displace(basis2, 1.0f0) |> gpu
+        
+        # Should throw basis mismatch error
+        @test_throws ArgumentError tensor(disp1_gpu, disp2_gpu)
+        
+        # Test ħ mismatch
+        disp1_h1 = displace(basis1, 1.0f0, ħ=1) |> gpu  
+        disp1_h2 = displace(basis1, 1.0f0, ħ=2) |> gpu
+        
+        @test_throws ArgumentError tensor(disp1_h1, disp1_h2)
+    end
+end
