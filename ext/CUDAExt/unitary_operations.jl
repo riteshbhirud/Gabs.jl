@@ -1,9 +1,6 @@
 # GPU Unitary and Channel Operations
-
-# Import the functions we want to extend
 import Gabs: displace, squeeze, twosqueeze, phaseshift, beamsplitter, attenuator, amplifier
 
-# Displacement operator - GPU version
 function displace(::Type{Td}, ::Type{Ts}, basis::SymplecticBasis{N}, alpha::A; ħ = 2) where {Td<:CuVector, Ts<:CuMatrix, N<:Int, A}
     if !CUDA_AVAILABLE
         gpu_fallback_warning()
