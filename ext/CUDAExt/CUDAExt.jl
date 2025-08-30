@@ -10,9 +10,11 @@ using Gabs: _vacuumstate, _coherentstate, _squeezedstate, _thermalstate, _eprsta
 using Gabs: _displace, _squeeze, _twosqueeze, _phaseshift, _beamsplitter
 using Gabs: _attenuator, _amplifier
 using Gabs: symplecticform, WIGNER_ERROR
+using Gabs: ACTION_ERROR, HBAR_ERROR, INDEX_ERROR, SYMPLECTIC_ERROR
 using LinearAlgebra: I, det, mul!, eigvals, Diagonal, logdet, dot, inv
 using Random: randn!
-
+using Gabs:  cross_wigner, cross_wignerchar, vacuumstate
+import Gabs: purity, entropy_vn, vacuumstate #normalize!, simplify!
 const CUDA_AVAILABLE = CUDA.functional()
 
 function __init__()
@@ -185,9 +187,12 @@ function Gabs._adapt_device_gpu(target_constructor, source_obj, args...)
     return target_constructor(CuVector{precision}, CuMatrix{precision}, args...)
 end
 
+
 include("utils.jl")
 include("state_operations.jl") 
 include("unitary_operations.jl")
 include("wigner_kernels.jl")
+include("linear_combinations.jl")
+
 
 end

@@ -34,6 +34,7 @@ function gpu(lc::GaussianLinearCombination; precision=Float32)
     return _gpu_impl(lc, precision)
 end
 
+
 # FIX: Remove precision parameter from basis version
 function gpu(basis::SymplecticBasis)
     return basis  # Basis itself doesn't need GPU arrays
@@ -89,7 +90,7 @@ device(x::Array) = :cpu
 device(state::GaussianState) = _detect_device(state.mean)
 device(op::GaussianUnitary) = _detect_device(op.disp)
 device(op::GaussianChannel) = _detect_device(op.disp)
-
+device(lc::GaussianLinearCombination) = _detect_device(lc)
 function _detect_device(x)
     return :cpu  # Will be extended by CUDAExt for CuArrays
 end
